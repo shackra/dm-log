@@ -25,19 +25,22 @@ Return plist with :time-format, :current-time, etc."
       (insert-file-contents file)
       (org-mode)
       (or
-       ;; Try property drawer under a headline
-       (org-element-map (org-element-parse-buffer) 'property-drawer
-         (lambda (pd)
-           (let ((props (org-element-property :properties pd)))
-             (when props
-               (let ((fmt (or (cdr (assoc "TIME_FORMAT" props))
-                              (cdr (assoc "FORMATO_TIEMPO" props))))
-                     (time (or (cdr (assoc "CURRENT_TIME" props))
-                               (cdr (assoc "TIEMPO_ACTUAL" props)))))
-                 (when (or fmt time)
-                   (list :time-format (or fmt "%B %d, %Y %H:%M")
-                         :current-time time))))))
-         nil t)
+;; Try node-property elements in property drawers
+        (org-element-map (org-element-parse-buffer) 'property-drawer
+          (lambda (pd)
+            (let ((props (org-element-map pd 'node-property
+                           (lambda (np)
+                             (cons (org-element-property :key np)
+                                   (org-element-property :value np))))))
+              (when props
+                (let ((fmt (or (cdr (assoc "TIME_FORMAT" props))
+                               (cdr (assoc "FORMATO_TIEMPO" props))))
+                      (time (or (cdr (assoc "CURRENT_TIME" props))
+                                (cdr (assoc "TIEMPO_ACTUAL" props)))))
+                  (when (or fmt time)
+                    (list :time-format (or fmt "%B %d, %Y %H:%M")
+                          :current-time time))))))
+          nil t)
        ;; Fallback: read #+KEYWORD lines at file level
        (let (fmt time)
          (goto-char (point-min))

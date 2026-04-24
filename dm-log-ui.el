@@ -130,32 +130,30 @@
 
 (defun dm-log-ui--extract-notes (headline)
   "Extract text from the Notes sub-heading under HEADLINE."
-  (let ((children (org-element-contents headline)))
-    (cl-some
-     (lambda (child)
-       (when (and (eq (org-element-type child) 'headline)
-                  (or (string= (org-element-property :raw-value child) "Notes")
-                      (string= (org-element-property :raw-value child) "Memo")))
-         (let ((text (car (org-element-contents child))))
-           (when (stringp text)
-             (string-trim text)))))
-     children)))
+  (let ((notes-hl (org-element-map headline 'headline
+                   (lambda (hl)
+                     (when (or (string= (org-element-property :raw-value hl) "Notes")
+                               (string= (org-element-property :raw-value hl) "Memo"))
+                       hl))
+                   nil t)))
+    (when notes-hl
+      (let ((paragraph (org-element-map notes-hl 'paragraph #'identity nil t)))
+        (when paragraph
+          (string-trim (org-element-interpret-data paragraph)))))))
 
 (defun dm-log-ui--extract-consumables (headline)
   "Extract consumables table under HEADLINE.
 Return list of lists (table rows)."
-  (let ((children (org-element-contents headline)))
-    (cl-some
-     (lambda (child)
-       (when (and (eq (org-element-type child) 'headline)
-                  (or (string= (org-element-property :raw-value child) "Consumables")
-                      (string= (org-element-property :raw-value child) "Consumibles")))
-         (let ((table (cl-find-if
-                       (lambda (c) (eq (org-element-type c) 'table))
-                       (org-element-contents child))))
-           (when table
-             (dm-log-ui--parse-org-table table)))))
-     children)))
+  (let ((cons-hl (org-element-map headline 'headline
+                   (lambda (hl)
+                     (when (or (string= (org-element-property :raw-value hl) "Consumables")
+                               (string= (org-element-property :raw-value hl) "Consumibles"))
+                       hl))
+                   nil t)))
+    (when cons-hl
+      (let ((table (org-element-map cons-hl 'table #'identity nil t)))
+        (when table
+          (dm-log-ui--parse-org-table table))))))
 
 (defun dm-log-ui--parse-org-table (table)
   "Parse org TABLE element to list of rows (lists of cells)."

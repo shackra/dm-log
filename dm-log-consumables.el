@@ -61,7 +61,7 @@ Return alist: ((Item . quantity-consumed) ...)."
                (quantity-per-period (cddr rate))
                (period-secs (dm-log-time--parse-period period-str)))
           (when (and period-secs (> period-secs 0))
-            (let ((consumption (* (/ time-secs period-secs) quantity-per-period)))
+            (let ((consumption (* (/ (float time-secs) period-secs) quantity-per-period)))
               (push (cons item consumption) result))))))
     (nreverse result)))
 

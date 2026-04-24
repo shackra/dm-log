@@ -122,14 +122,14 @@
 ;; -----------------------------------------------------------------------------
 
 (defun dm-log--headline-props (hl)
-  "Extract property alist from property-drawer child of headline HL.
-Org-element returns :properties only on property-drawer elements,
-not on headline elements. This finds the drawer child."
-  (let ((drawer (cl-find-if
-                 (lambda (el) (eq (org-element-type el) 'property-drawer))
-                 (org-element-contents hl))))
-    (when drawer
-      (org-element-property :properties drawer))))
+  "Extract property alist from property-drawer of headline HL.
+Uses org-element-map to find node-property elements, which works
+across Emacs versions where :properties may be nil."
+  (org-element-map hl 'node-property
+    (lambda (np)
+      (cons (org-element-property :key np)
+            (org-element-property :value np)))
+    nil nil nil))
 
 (defun dm-log--campaigns-list ()
   "Return list of available campaign directories."
