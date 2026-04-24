@@ -819,5 +819,86 @@ Los personajes entraron.
   (let ((dm-log-campaigns-directory "/nonexistent/dir/12345"))
     (should-not (dm-log--campaigns-list))))
 
+;; =============================================================================
+;; Regression tests: bugs reported by user
+;; =============================================================================
+
+;; Bug: "Logbook of events, session ?" shown for ** Players headline
+;; under * Metadata which has no NUMBER property.
+
+(ert-deftest dm-log-test-render-skips-non-session-level2 ()
+  "Level-2 headlines without NUMBER property should not produce session header."
+  (dm-log-test-with-temp-file
+      "#+TITLE: Test Campaign
+#+CURRENT_TIME: [2024-01-01 12:00]
+
+* Metadata
+** Players
+
+* Logbook
+** Session 1
+:PROPERTIES:
+:NUMBER: 1
+:END:
+
+*** Turn 1 [dungeon] (10m)
+:PROPERTIES:
+:TURN_NUMBER: 1
+:TURN_TYPE: dungeon
+:ADVANCE: 10m
+:END:
+"
+    (with-temp-buffer
+      (dm-log-ui--render-logbook file)
+      (let ((text (buffer-string)))
+        (should-not (string-match "session \\?" text))
+        (should-not (string-match "Logbook of events, session \\?" text))
+        (should (string-match "Logbook of events, session 1" text))))))
+
+;; Bug: duplicate consumable rows ("TORCHES" + "Torches") because
+;; apply-consumption uses case-sensitive assoc-string, so "Torches"
+;; consumption never matches "TORCHES" inventory key.
+
+(ert-deftest dm-log-test-apply-consumption-case-insensitive ()
+  "Consumption with Capitalized key should deduct from UPPERCASE inventory key."
+  (let* ((inventory '(("TORCHES" . 10) ("RATIONS" . 6)))
+         (consumption '(("Torches" . 2.0) ("Rations" . 0.5)))
+         (result (dm-log-consumables--apply-consumption inventory consumption nil)))
+    (should result)
+    (should (= (cdr (assoc "TORCHES" result)) 8.0))
+    (should (= (cdr (assoc "RATIONS" result)) 5.5))))
+
+(ert-deftest dm-log-test-apply-consumption-mixed-case-no-dupes ()
+  "Result should not contain duplicate keys from case mismatch."
+  (let* ((inventory '(("TORCHES" . 10)))
+         (consumption '(("Torches" . 2.0)))
+         (result (dm-log-consumables--apply-consumption inventory consumption nil)))
+    (should (= (length result) 1))
+    (should (= (cdr (car result)) 8.0))))
+
+;; Bug: insert-turn produces duplicate item rows when inventory keys
+;; (uppercase) differ in case from consumption keys (Capitalized).
+
+(ert-deftest dm-log-test-insert-turn-no-duplicate-items ()
+  "insert-turn should not produce duplicate item rows from case mismatch."
+  (dm-log-test-with-temp-file
+      "* Logbook\n** Session 1\n:PROPERTIES:\n:NUMBER: 1\n:END:\n"
+    (let* ((time-start (dm-log-time--parse-game-timestamp "[2024-01-15 08:30]"))
+           (time-end (dm-log-time--parse-game-timestamp "[2024-01-15 08:40]"))
+           (consumables '(("Aragorn" . (("TORCHES" . 5.0) ("RATIONS" . 2.0)))
+                          ("Boromir" . (("TORCHES" . 3.0) ("RATIONS" . 1.0))))))
+      (dm-log-org--insert-turn file 1 "dungeon" "10m" "Entered." consumables nil time-start time-end)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (let ((text (buffer-string))
+              (torch-count 0))
+          (dolist (line (split-string text "\n"))
+            (when (string-match "| TORCHES |" line)
+              (setq torch-count (1+ torch-count))))
+          (should (string-match (regexp-quote "| TORCHES |") text))
+          (should-not (let ((case-fold-search nil)) (string-match (regexp-quote "| Torches |") text)))
+          (should-not (let ((case-fold-search nil)) (string-match (regexp-quote "| torches |") text)))
+          (should (= torch-count 1)))))))
+
 (provide 'dm-log-test)
 ;;; dm-log-test.el ends here

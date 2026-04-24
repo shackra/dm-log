@@ -171,15 +171,21 @@
           (dotimes (_ num-players)
             (insert "+------"))
           (insert "|\n"))
-        ;; Rows per item
-        (let* ((items (delete-dups
-                       (apply #'append
-                              (mapcar (lambda (i) (mapcar #'car (cdr i)))
-                                      inventories)))))
+        ;; Rows per item (case-insensitive dedup)
+        (let* ((items (let ((seen nil)
+                            (result nil))
+                        (dolist (item (apply #'append
+                                             (mapcar (lambda (i) (mapcar #'car (cdr i)))
+                                                     inventories)))
+                          (let ((key (downcase item)))
+                            (unless (member key seen)
+                              (push key seen)
+                              (push item result))))
+                        (nreverse result))))
           (dolist (item items)
             (insert (format "| %s |" item))
             (dolist (inv inventories)
-              (let ((quantity (or (cdr (assoc-string item (cdr inv))) 0)))
+              (let ((quantity (or (cdr (assoc-string item (cdr inv) t)) 0)))
                 (insert (format " %.2f |" quantity))))
             (insert "\n")))
         (insert "\n")
@@ -251,8 +257,8 @@
                         (cl-loop for name-raw in names
                                  for val in vals
                                  for name = (string-trim name-raw)
-                                 do (push (cons item (string-to-number (string-trim val)))
-                                          (cdr (assoc-string name consumables-alist)))))))))))))
+do (push (cons item (string-to-number (string-trim val)))
+                                           (cdr (assoc-string name consumables-alist t)))))))))))))
 
       ;; Save to org
       (dm-log-org--insert-turn dm-log--current-logbook-file

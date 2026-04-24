@@ -70,17 +70,20 @@ Return alist: ((Item . quantity-consumed) ...)."
 INVENTORY: alist ((item . quantity)...)
 CONSUMPTION: alist from dm-log-consumables--calculate-consumption
 PLAYER-PROPS: player properties (e.g: :TORCH-LIT).
-Return new inventory."
+Return new inventory.
+Item name matching is case-insensitive so that \"Torches\"
+in consumption matches \"TORCHES\" in inventory."
   (let ((new (copy-alist inventory)))
     (dolist (c consumption)
       (let* ((item (car c))
              (qty-consumed (cdr c))
-             (current (or (cdr (assoc-string item new)) 0)))
-        (when (and (string= item "Antorchas")
+             (current (or (cdr (assoc-string item new t)) 0)))
+        (when (and (string= (downcase item) "antorchas")
                    (not (plist-get player-props :TORCH-LIT)))
           (setq qty-consumed 0))
-        (setf (alist-get item new nil nil #'string=)
-              (max 0 (- current qty-consumed)))))
+        (let ((inv-key (car (assoc-string item new t))))
+          (setf (alist-get (or inv-key item) new nil nil #'string=)
+                (max 0 (- current qty-consumed))))))
     new))
 
 (provide 'dm-log-consumables)

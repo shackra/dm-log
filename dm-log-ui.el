@@ -92,13 +92,14 @@
           (let ((level (org-element-property :level hl))
                 (title (org-element-property :raw-value hl))
                 (props (dm-log--headline-props hl)))
-            (cond
-             ;; Session (level 2)
-             ((= level 2)
-              (setq session-num (or (cdr (assoc "NUMBER" props))
-                                    (cdr (assoc "NUMERO" props))
-                                    "?"))
-              (insert (format "Logbook of events, session %s\n\n" session-num)))
+(cond
+              ;; Session (level 2) — only render if it has a NUMBER property
+              ((and (= level 2)
+                    (or (cdr (assoc "NUMBER" props))
+                        (cdr (assoc "NUMERO" props))))
+               (setq session-num (or (cdr (assoc "NUMBER" props))
+                                     (cdr (assoc "NUMERO" props))))
+               (insert (format "Logbook of events, session %s\n\n" session-num)))
 
              ;; Turn (level 3)
              ((= level 3)
