@@ -7,12 +7,19 @@
 
 (require 'cl-lib)
 (require 'transient)
-(require 'dm-log)
 (require 'dm-log-time)
 (require 'dm-log-consumables)
 (require 'dm-log-org)
 (require 'dm-log-ui)
 (require 'dm-log-campaign)
+
+(defvar dm-log--current-logbook-file nil)
+(defvar dm-log--current-players-file nil)
+(defvar dm-log--current-consumables-file nil)
+(defvar dm-log-turn-dungeon-advance nil)
+(defvar dm-log-turn-wilderness-advance nil)
+(defvar dm-log-turn-combat-advance nil)
+(defvar dm-log--current-campaign nil)
 
 ;; -----------------------------------------------------------------------------
 ;; Main Transient

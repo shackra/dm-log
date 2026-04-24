@@ -11,9 +11,10 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'org)
-(require 'org-element)
-(require 'transient)
+(require 'dm-log-time)
+(require 'dm-log-consumables)
+(require 'dm-log-org)
+(require 'dm-log-ui)
 
 ;; -----------------------------------------------------------------------------
 ;; Customization
@@ -84,8 +85,6 @@
 ;; Minor Mode
 ;; -----------------------------------------------------------------------------
 
-(declare-function dm-log-main-menu "dm-log-transient" ())
-
 (defvar dm-log-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "SPC") #'dm-log-main-menu)
@@ -105,11 +104,11 @@
 ;; -----------------------------------------------------------------------------
 
 ;;;###autoload
-(declare-function dm-log-campaign-select "dm-log-campaign" ())
-
 (defun dm-log ()
   "Start dm-log showing the campaign selector."
   (interactive)
+  (require 'dm-log-campaign)
+  (require 'dm-log-transient)
   (dm-log-campaign-select))
 
 (defun dm-log-quit ()

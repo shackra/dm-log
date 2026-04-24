@@ -7,8 +7,21 @@
 
 (require 'cl-lib)
 (require 'transient)
-(require 'dm-log)
 (require 'dm-log-ui)
+
+(declare-function dm-log--campaigns-list "dm-log" ())
+(declare-function dm-log--campaign-name "dm-log" (path))
+(declare-function dm-log-mode "dm-log" ())
+
+(defvar dm-log-campaigns-directory nil)
+(defvar dm-log-logbook-filename nil)
+(defvar dm-log-consumables-filename nil)
+(defvar dm-log-players-filename nil)
+(defvar dm-log-buffer-name nil)
+(defvar dm-log--current-campaign nil)
+(defvar dm-log--current-logbook-file nil)
+(defvar dm-log--current-consumables-file nil)
+(defvar dm-log--current-players-file nil)
 
 (declare-function dm-log-campaign-menu "dm-log-campaign" ())
 
