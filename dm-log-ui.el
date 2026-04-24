@@ -9,6 +9,7 @@
 (require 'org)
 
 (declare-function dm-log-org--get-file-properties "dm-log-org" (file))
+(declare-function dm-log--headline-props "dm-log" (hl))
 
 ;; -----------------------------------------------------------------------------
 ;; Buffer-local variables
@@ -45,7 +46,7 @@
 (defun dm-log-ui--render (logbook-file)
   "Render LOGBOOK-FILE in the current buffer (*SW-Logbook*)."
   (let* ((props (dm-log-org--get-file-properties logbook-file))
-         (fmt (or (plist-get props :time-format) "%B %d, %E %Y %H:%M"))
+         (fmt (or (plist-get props :time-format) "%B %d, %Y %H:%M"))
          (current-time (plist-get props :current-time))
          (real-time (format-time-string "%B %d, %Y %H:%M"))
          (inhibit-read-only t))
@@ -90,11 +91,13 @@
         (lambda (hl)
           (let ((level (org-element-property :level hl))
                 (title (org-element-property :raw-value hl))
-                (props (org-element-property :properties hl)))
+                (props (dm-log--headline-props hl)))
             (cond
              ;; Session (level 2)
              ((= level 2)
-              (setq session-num (or (cdr (assoc "NUMERO" props)) "?"))
+              (setq session-num (or (cdr (assoc "NUMBER" props))
+                                    (cdr (assoc "NUMERO" props))
+                                    "?"))
               (insert (format "Logbook of events, session %s\n\n" session-num)))
 
              ;; Turn (level 3)

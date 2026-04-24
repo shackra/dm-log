@@ -121,6 +121,16 @@
 ;; Utility
 ;; -----------------------------------------------------------------------------
 
+(defun dm-log--headline-props (hl)
+  "Extract property alist from property-drawer child of headline HL.
+Org-element returns :properties only on property-drawer elements,
+not on headline elements. This finds the drawer child."
+  (let ((drawer (cl-find-if
+                 (lambda (el) (eq (org-element-type el) 'property-drawer))
+                 (org-element-contents hl))))
+    (when drawer
+      (org-element-property :properties drawer))))
+
 (defun dm-log--campaigns-list ()
   "Return list of available campaign directories."
   (when (file-directory-p dm-log-campaigns-directory)

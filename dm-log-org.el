@@ -11,28 +11,44 @@
 (require 'org-element)
 (require 'dm-log-time)
 
+(declare-function dm-log--headline-props "dm-log" (hl))
+
 ;; -----------------------------------------------------------------------------
 ;; File properties (campaign)
 ;; -----------------------------------------------------------------------------
 
 (defun dm-log-org--get-file-properties (file)
-  "Read top-level file properties from FILE.
+  "Read file properties from FILE.
 Return plist with :time-format, :current-time, etc."
   (when (file-exists-p file)
     (with-temp-buffer
       (insert-file-contents file)
       (org-mode)
-      (org-element-map (org-element-parse-buffer) 'property-drawer
-        (lambda (pd)
-          (let ((props (org-element-property :properties pd)))
-            (when props
-              (let ((fmt (or (cdr (assoc "TIME_FORMAT" props))
-                             (cdr (assoc "FORMATO_TIEMPO" props))))
-                    (time (or (cdr (assoc "CURRENT_TIME" props))
-                              (cdr (assoc "TIEMPO_ACTUAL" props)))))
-                (list :time-format (or fmt "%B %d, %E %Y %H:%M")
-                      :current-time time)))))
-        nil t))))
+      (or
+       ;; Try property drawer under a headline
+       (org-element-map (org-element-parse-buffer) 'property-drawer
+         (lambda (pd)
+           (let ((props (org-element-property :properties pd)))
+             (when props
+               (let ((fmt (or (cdr (assoc "TIME_FORMAT" props))
+                              (cdr (assoc "FORMATO_TIEMPO" props))))
+                     (time (or (cdr (assoc "CURRENT_TIME" props))
+                               (cdr (assoc "TIEMPO_ACTUAL" props)))))
+                 (when (or fmt time)
+                   (list :time-format (or fmt "%B %d, %Y %H:%M")
+                         :current-time time))))))
+         nil t)
+       ;; Fallback: read #+KEYWORD lines at file level
+       (let (fmt time)
+         (goto-char (point-min))
+         (while (re-search-forward "^#\\+\\(TIME_FORMAT\\|FORMATO_TIEMPO\\|CURRENT_TIME\\|TIEMPO_ACTUAL\\):\\s-*\\(.*\\)$" nil t)
+           (let ((key (match-string 1))
+                 (val (match-string 2)))
+             (cond ((member key '("TIME_FORMAT" "FORMATO_TIEMPO")) (setq fmt val))
+                   ((member key '("CURRENT_TIME" "TIEMPO_ACTUAL")) (setq time val)))))
+         (when (or fmt time)
+           (list :time-format (or fmt "%B %d, %Y %H:%M")
+                 :current-time time)))))))
 
 (defun dm-log-org--set-file-property (file prop value)
   "Set property PROP to VALUE in FILE."
@@ -54,41 +70,49 @@ If FMT is non-nil, also update TIME_FORMAT."
     (save-excursion
       (goto-char (point-min))
       (let ((time-str (dm-log-time--format-game-timestamp time)))
-        ;; Try new property name first, then fall back to old name
-        (if (re-search-forward "^:CURRENT_TIME:" nil t)
-            (progn
-              (beginning-of-line)
-              (kill-line)
-              (insert ":CURRENT_TIME: " time-str))
-          (if (re-search-forward "^:TIEMPO_ACTUAL:" nil t)
+        ;; Update #+CURRENT_TIME keyword or :CURRENT_TIME: property
+        (if (re-search-forward "^#\\+CURRENT_TIME:\\s-*\\[.*?\\]" nil t)
+            (replace-match (concat "#+CURRENT_TIME: " time-str))
+          (if (re-search-forward "^:CURRENT_TIME:" nil t)
               (progn
                 (beginning-of-line)
                 (kill-line)
                 (insert ":CURRENT_TIME: " time-str))
-            (progn
-              (goto-char (point-min))
-              (when (re-search-forward "^:END:" nil t)
-                (end-of-line)
-                (insert "\n:CURRENT_TIME: " time-str)
-                (insert "\n:END:"))))))
+            (if (re-search-forward "^:TIEMPO_ACTUAL:" nil t)
+                (progn
+                  (beginning-of-line)
+                  (kill-line)
+                  (insert ":CURRENT_TIME: " time-str))
+              (progn
+                (goto-char (point-min))
+                (when (re-search-forward "^:END:" nil t)
+                  (end-of-line)
+                  (insert "\n:CURRENT_TIME: " time-str)
+                  (insert "\n:END:")))))))
       (when fmt
         (goto-char (point-min))
-        (if (re-search-forward "^:TIME_FORMAT:" nil t)
-            (progn
-              (beginning-of-line)
-              (kill-line)
-              (insert ":TIME_FORMAT: " fmt))
-          (if (re-search-forward "^:FORMATO_TIEMPO:" nil t)
+        (if (re-search-forward "^#\\+TIME_FORMAT:\\s-*\\S-+" nil t)
+            (replace-match (concat "#+TIME_FORMAT: " fmt))
+          (if (re-search-forward "^:TIME_FORMAT:" nil t)
               (progn
                 (beginning-of-line)
                 (kill-line)
                 (insert ":TIME_FORMAT: " fmt))
-            (progn
-              (goto-char (point-min))
-              (when (re-search-forward "^:END:" nil t)
-                (end-of-line)
-                (insert "\n:TIME_FORMAT: " fmt)
-                (insert "\n:END:"))))))
+            (if (re-search-forward "^:FORMATO_TIEMPO:" nil t)
+                (progn
+                  (beginning-of-line)
+                  (kill-line)
+                  (insert ":TIME_FORMAT: " fmt))
+              (progn
+                (goto-char (point-min))
+                (when (re-search-forward "^:END:" nil t)
+                  (end-of-line)
+                  (insert "\n:TIME_FORMAT: " fmt)
+                  (insert "\n:END:")))))))
+      ;; Fix %E in format strings (broken spec from earlier versions)
+      (goto-char (point-min))
+      (while (re-search-forward "%E " nil t)
+        (replace-match ""))
       (save-buffer))
     (kill-buffer (current-buffer))))
 
@@ -108,7 +132,7 @@ If FMT is non-nil, also update TIME_FORMAT."
           (lambda (hl)
             (when (= (org-element-property :level hl) 1)
               (let* ((name (org-element-property :raw-value hl))
-                     (props (org-element-property :properties hl))
+                     (props (dm-log--headline-props hl))
                      (inventory nil))
                 (dolist (p props)
                   (let ((k (car p))

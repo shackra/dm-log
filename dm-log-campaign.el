@@ -1,7 +1,7 @@
-;;; dm-log-campaign.el --- Campaign selector  -*- lexical-binding: t; -*-
+;;; dm-log-campaign.el --- Campaign selector and creator  -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Transient for selecting campaigns from the configured directory.
+;; Transient for selecting or creating campaigns from the configured directory.
 
 ;;; Code:
 
@@ -36,33 +36,64 @@
           (dm-log--campaigns-list)))
 
 (defun dm-log-campaign-select ()
-  "Show transient to select campaign."
+  "Show transient to select or create a campaign."
   (interactive)
   (let ((choices (dm-log-campaign--get-choices)))
-    (if (null choices)
-        (message "No campaigns found in %s" dm-log-campaigns-directory)
-      ;; Create dynamic transient
-      (eval
-       `(transient-define-prefix dm-log-campaign-menu ()
-          "Select campaign"
-          ["Available campaigns"
-           ,@(mapcar (lambda (choice)
-                       (list (substring (car choice) 0 1)
-                             (car choice)
-                             (intern (format "dm-log-campaign--load-%s" (car choice)))))
-                     choices)]
-          (interactive)
-          (transient-setup 'dm-log-campaign-menu)))
-      ;; Define dynamic functions
-      (dolist (choice choices)
-        (let ((name (car choice))
-              (path (cdr choice)))
-          (eval `(defun ,(intern (format "dm-log-campaign--load-%s" name)) ()
-                   ,(format "Load campaign %s" name)
-                   (interactive)
-                   (dm-log-campaign--load ,path)))))
-      ;; Call
-      (dm-log-campaign-menu))))
+    ;; Build dynamic transient
+    (eval
+     `(transient-define-prefix dm-log-campaign-menu ()
+        "Campaign Manager"
+        ["Actions"
+         ("n" "New campaign" dm-log-campaign-create)]
+        ["Existing Campaigns"
+         ,@(mapcar (lambda (choice)
+                     (list (substring (car choice) 0 1)
+                           (car choice)
+                           (intern (format "dm-log-campaign--load-%s" (car choice)))))
+                   choices)]
+        (interactive)
+        (transient-setup 'dm-log-campaign-menu)))
+    ;; Define dynamic load functions
+    (dolist (choice choices)
+      (let ((name (car choice))
+            (path (cdr choice)))
+        (eval `(defun ,(intern (format "dm-log-campaign--load-%s" name)) ()
+                 ,(format "Load campaign %s" name)
+                 (interactive)
+                 (dm-log-campaign--load ,path)))))
+    ;; Call
+    (dm-log-campaign-menu)))
+
+;; -----------------------------------------------------------------------------
+;; Campaign creation
+;; -----------------------------------------------------------------------------
+
+(defun dm-log-campaign-create (name)
+  "Create a new campaign named NAME and open it."
+  (interactive "sCampaign name: ")
+  (unless (and name (not (string= name "")))
+    (user-error "Campaign name cannot be empty"))
+  (let* ((dir (expand-file-name name dm-log-campaigns-directory)))
+    (when (file-exists-p dir)
+      (user-error "Campaign '%s' already exists" name))
+    ;; Ensure parent directory exists
+    (unless (file-directory-p dm-log-campaigns-directory)
+      (make-directory dm-log-campaigns-directory t))
+    (make-directory dir)
+    ;; Initialize all three files
+    (dm-log-campaign--init-logbook
+     (expand-file-name dm-log-logbook-filename dir))
+    (dm-log-campaign--init-players
+     (expand-file-name dm-log-players-filename dir))
+    (dm-log-campaign--init-consumables
+     (expand-file-name dm-log-consumables-filename dir))
+    ;; Load the new campaign
+    (dm-log-campaign--load dir)
+    (message "Campaign '%s' created and loaded." name)))
+
+;; -----------------------------------------------------------------------------
+;; Campaign loading
+;; -----------------------------------------------------------------------------
 
 (defun dm-log-campaign--load (path)
   "Load campaign at PATH and open logbook."
@@ -73,15 +104,15 @@
         (expand-file-name dm-log-consumables-filename path))
   (setq dm-log--current-players-file
         (expand-file-name dm-log-players-filename path))
-  
-  ;; Verify files
+
+  ;; Verify files exist (scaffold if missing)
   (unless (file-exists-p dm-log--current-logbook-file)
     (dm-log-campaign--init-logbook dm-log--current-logbook-file))
   (unless (file-exists-p dm-log--current-players-file)
     (dm-log-campaign--init-players dm-log--current-players-file))
   (unless (file-exists-p dm-log--current-consumables-file)
     (dm-log-campaign--init-consumables dm-log--current-consumables-file))
-  
+
   ;; Open logbook
   (dm-log-campaign--open-logbook))
 
@@ -101,12 +132,9 @@
 (defun dm-log-campaign--init-logbook (file)
   "Create initial logbook file."
   (with-temp-file file
-    (insert ":PROPERTIES:\n")
-    (insert ":ID: " (org-id-new) "\n")
-    (insert ":TIME_FORMAT: %B %d, %E %Y %H:%M\n")
-    (insert ":CURRENT_TIME: [2024-01-01 12:00]\n")
-    (insert ":END:\n")
-    (insert "#+TITLE: New Campaign\n\n")
+    (insert "#+TITLE: New Campaign\n")
+    (insert "#+TIME_FORMAT: %B %d, %Y %H:%M\n")
+    (insert "#+CURRENT_TIME: [2024-01-01 12:00]\n\n")
     (insert "* Metadata\n")
     (insert "** Players\n")
     (insert "\n* Logbook\n")
@@ -114,7 +142,7 @@
     (insert ":PROPERTIES:\n")
     (insert ":ID: " (org-id-new) "\n")
     (insert ":NUMBER: 1\n")
-    (insert ":REAL_DATE: " (format-time-string "[%Y-%m-%d %a]") "\n")
+    (insert ":REAL_TIME: " (format-time-string "[%Y-%m-%d %a %H:%M]") "\n")
     (insert ":END:\n")))
 
 (defun dm-log-campaign--init-players (file)
