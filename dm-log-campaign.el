@@ -120,7 +120,7 @@
   "Open or refresh the *SW-Logbook* buffer."
   (let ((buf (get-buffer-create dm-log-buffer-name)))
     (with-current-buffer buf
-      (setq default-directory dm-log--current-campaign)
+      (setq default-directory (file-name-directory dm-log--current-logbook-file))
       (dm-log-mode)
       (dm-log-ui--render dm-log--current-logbook-file))
     (pop-to-buffer buf)
