@@ -112,10 +112,29 @@
   (dm-log-campaign-select))
 
 (defun dm-log-quit ()
-  "Close the logbook buffer."
+  "Close the logbook buffer, dired sidebar, and any .org buffers from the campaign."
   (interactive)
-  (when (get-buffer dm-log-buffer-name)
-    (kill-buffer dm-log-buffer-name)))
+  (let* ((logbook-buf (get-buffer dm-log-buffer-name))
+         (campaign-dir (when dm-log--current-logbook-file
+                         (file-name-directory dm-log--current-logbook-file))))
+    (when logbook-buf
+      (kill-buffer logbook-buf))
+    (when campaign-dir
+      (dolist (buf (buffer-list))
+        (let ((file (buffer-file-name buf)))
+          (when (and file
+                     (string-prefix-p campaign-dir file))
+            (if (buffer-modified-p buf)
+                (when (yes-or-no-p (format "Save modified file %s before closing? "
+                                            (file-name-nondirectory file)))
+                  (with-current-buffer buf (save-buffer))
+                  (kill-buffer buf))
+              (kill-buffer buf)))))
+      (let ((dired-buf (get-buffer (file-name-nondirectory
+                                   (directory-file-name campaign-dir)))))
+        (when dired-buf
+          (kill-buffer dired-buf))))
+    (delete-other-windows)))
 
 ;; -----------------------------------------------------------------------------
 ;; Utility

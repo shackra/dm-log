@@ -117,13 +117,23 @@
   (dm-log-campaign--open-logbook))
 
 (defun dm-log-campaign--open-logbook ()
-  "Open or refresh the *SW-Logbook* buffer."
-  (let ((buf (get-buffer-create dm-log-buffer-name)))
-    (with-current-buffer buf
-      (setq default-directory (file-name-directory dm-log--current-logbook-file))
+  "Open or refresh the *SW-Logbook* buffer with a dired sidebar."
+  (let* ((campaign-dir (file-name-directory dm-log--current-logbook-file))
+         (dired-buf-name (file-name-nondirectory
+                          (directory-file-name campaign-dir)))
+         (dired-buf (or (get-buffer dired-buf-name)
+                        (dired-noselect campaign-dir)))
+         (logbook-buf (get-buffer-create dm-log-buffer-name)))
+    (delete-other-windows)
+    (split-window-right)
+    (other-window 1)
+    (switch-to-buffer dired-buf)
+    (other-window 1)
+    (with-current-buffer logbook-buf
+      (setq default-directory campaign-dir)
       (dm-log-mode)
       (dm-log-ui--render dm-log--current-logbook-file))
-    (pop-to-buffer buf)
+    (switch-to-buffer logbook-buf)
     (message "Campaign loaded. SPC for menu.")))
 
 ;; -----------------------------------------------------------------------------
