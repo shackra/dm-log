@@ -2,10 +2,11 @@ use crate::app::App;
 use crate::editor::brush::Brush;
 use crate::map::MapType;
 
-/// Paints a single terrain character onto a Region map cell.
+/// Paints a single character with color onto any map cell.
 pub struct TerrainBrush {
     pub ch: char,
     pub terrain: String,
+    pub fg_color: u8,
 }
 
 impl TerrainBrush {
@@ -13,7 +14,13 @@ impl TerrainBrush {
         TerrainBrush {
             ch,
             terrain: terrain.into(),
+            fg_color: 7,
         }
+    }
+
+    pub fn with_color(mut self, fg_color: u8) -> Self {
+        self.fg_color = fg_color;
+        self
     }
 }
 
@@ -31,11 +38,10 @@ impl Brush for TerrainBrush {
         let (col, row) = app.cursor;
         let z = app.current_layer;
         if let Some(map) = app.current_map_mut() {
-            if map.map_type != MapType::Region {
-                return;
-            }
             if let Some(layer) = map.layer_mut(z) {
-                let cell = crate::map::Cell::new(self.ch).with_terrain(self.terrain.clone());
+                let cell = crate::map::Cell::new(self.ch)
+                    .with_terrain(self.terrain.clone())
+                    .with_color(self.fg_color);
                 layer.cells.insert((col, row), cell);
             }
         }

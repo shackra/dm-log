@@ -130,6 +130,9 @@ fn write_cell<W: Write>(
     if let Some(hz) = &cell.height_zone {
         ce.push_attribute(("height_zone", hz.as_str()));
     }
+    if cell.fg_color > 0 {
+        ce.push_attribute(("fg_color", cell.fg_color.to_string().as_str()));
+    }
     w.write_event(Event::Empty(ce))?;
     Ok(())
 }
@@ -236,6 +239,10 @@ pub fn load(path: &Path) -> Result<MapFile, Box<dyn std::error::Error>> {
                         cell.locked = attrs.get("locked").map(|s| s == "true").unwrap_or(false);
                         cell.key_uuid = attrs.get("key_uuid").cloned();
                         cell.height_zone = attrs.get("height_zone").cloned();
+                        cell.fg_color = attrs
+                            .get("fg_color")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0);
                         layer.cells.insert((x, y), cell);
                     }
                 }
@@ -336,6 +343,7 @@ mod tests {
                     key_uuid: Some("uuid-abc".to_string()),
                     locked: false,
                     height_zone: Some("valley".to_string()),
+                    fg_color: 2,
                 },
             );
         }
@@ -387,6 +395,7 @@ mod tests {
         assert_eq!(cell.terrain, "forest");
         assert_eq!(cell.key_uuid.as_deref(), Some("uuid-abc"));
         assert_eq!(cell.height_zone.as_deref(), Some("valley"));
+        assert_eq!(cell.fg_color, 2);
 
         let city = loaded.get("map-002").unwrap();
         assert_eq!(city.parent.as_deref(), Some("map-001"));

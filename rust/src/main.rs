@@ -273,9 +273,10 @@ fn run(
                             *sidebar_brush_idx = idx;
                             if let Some(t) = &map_type {
                                 let brushes = ui::sidebar_left::brushes_for(t);
-                                if let Some(&(glyph, label, _color)) = brushes.get(idx) {
+                                if let Some(&(glyph, label, color)) = brushes.get(idx) {
                                     app.active_brush = Box::new(
-                                        editor::brushes::region::TerrainBrush::new(glyph, label),
+                                        editor::brushes::region::TerrainBrush::new(glyph, label)
+                                            .with_color(color),
                                     );
                                     app.mode = EditorMode::Brushing;
                                     app.set_status(format!("Brush: {} {}", glyph, label));
@@ -294,19 +295,21 @@ fn run(
                                 let pal = ui::sidebar_left::palette_for(t);
                                 if color_idx < pal.len() {
                                     *sidebar_color_idx = color_idx;
-                                    // Use currently selected sidebar brush glyph with new color
+                                    // Use currently selected sidebar brush glyph with clicked color
                                     let brushes = ui::sidebar_left::brushes_for(t);
                                     let (ch, label) = brushes
                                         .get(*sidebar_brush_idx)
                                         .map(|(c, l, _)| (*c, *l))
                                         .unwrap_or(('.', "terrain"));
+                                    let picked_color = pal[color_idx];
                                     app.active_brush = Box::new(
-                                        editor::brushes::region::TerrainBrush::new(ch, label),
+                                        editor::brushes::region::TerrainBrush::new(ch, label)
+                                            .with_color(picked_color),
                                     );
                                     app.mode = EditorMode::Brushing;
                                     app.set_status(format!(
                                         "Brush: {} {} (color {})",
-                                        ch, label, pal[color_idx]
+                                        ch, label, picked_color
                                     ));
                                 }
                             }

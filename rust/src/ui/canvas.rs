@@ -53,14 +53,18 @@ impl<'a> Widget for Canvas<'a> {
                 // Get cell from current layer
                 let (ch, style) = if let Some(layer) = layer {
                     if let Some(cell) = layer.cells.get(&(map_col, map_row)) {
-                        let mut s = Style::default();
+                        // Base color from cell's fg_color (0 = default white)
+                        let mut s = if cell.fg_color > 0 {
+                            Style::default().fg(Color::Indexed(cell.fg_color))
+                        } else {
+                            Style::default()
+                        };
+                        // Override color for special states
                         if cell.locked {
                             s = s.fg(Color::Red).add_modifier(Modifier::DIM);
                         } else if cell.key_uuid.is_some() {
                             s = s.fg(Color::Yellow).add_modifier(Modifier::BOLD);
-                        }
-                        // Height zone tint
-                        if cell.height_zone.is_some() {
+                        } else if cell.height_zone.is_some() {
                             s = s.fg(Color::Cyan);
                         }
                         (cell.ch, s)
