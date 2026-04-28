@@ -199,21 +199,29 @@ Return plist with turn data."
 Return alist: ((player . ((item . quantity)...)) ...)"
   (save-excursion
     (goto-char pos)
-    (let (result)
-      (when (re-search-forward "^\\*\\*\\*\\*\\s-+Consumables" nil t)
-        (forward-line)
-        (when (looking-at "^\\s-*|")
-          (forward-line 2))
-        (while (looking-at "^\\s-*|\\s-*\\([^|]+\\)|")
-          (let ((item (string-trim (match-string 1)))
-                (cols nil))
-            (save-excursion
-              (beginning-of-line)
-              (while (re-search-forward "|\\s-*\\([^|]+\\)" (line-end-position) t)
-                (push (string-trim (match-string 1)) cols)))
-            (push (cons item (nreverse (cdr (nreverse cols)))) result))
-          (forward-line)))
-      result)))
+    (when (re-search-forward "^\\*\\*\\*\\*\\s-+\\(Consumables\\|Consumibles\\)" nil t)
+      (forward-line)
+      (when (re-search-forward "^\\s-*|" nil t)
+        (beginning-of-line)
+        (let ((rows (org-table-to-lisp)))
+          (when (and rows (listp (car rows)))
+            (let* ((header (cdr (car rows)))
+                   (names (mapcar #'string-trim header))
+                   (result nil))
+              (dolist (name names)
+                (push (cons name nil) result))
+              (setq result (nreverse result))
+              (dolist (row (cdr rows))
+                (when (and (listp row) (not (eq (car row) 'hline)))
+                  (let ((item (string-trim (car row)))
+                        (vals (cdr row)))
+                    (cl-loop for name in names
+                             for val in vals
+                             do (push (cons item (string-to-number (string-trim val)))
+                                      (cdr (assoc-string name result t)))))))
+              (dolist (entry result)
+                (setcdr entry (nreverse (cdr entry))))
+              result)))))))
 
 ;; -----------------------------------------------------------------------------
 ;; Insert entry

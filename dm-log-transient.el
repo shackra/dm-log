@@ -143,12 +143,17 @@
          (number (if last (1+ (plist-get last :number)) 1)))
     
     ;; Prepare data for edit buffer
-    (let* ((inventories (mapcar
+    ;; Use last turn's consumables as starting inventory if available,
+    ;; otherwise fall back to players.org inventory
+    (let* ((last-consumables (when last (plist-get last :consumables)))
+           (inventories (mapcar
                          (lambda (j)
                            (let* ((name (plist-get j :name))
-                                  (inv (copy-alist (plist-get j :inventory)))
+                                  (base-inv (or (when last-consumables
+                                                  (cdr (assoc-string name last-consumables t)))
+                                                (copy-alist (plist-get j :inventory))))
                                   (new-inv (dm-log-consumables--apply-consumption
-                                            inv consumption (plist-get j :props))))
+                                            base-inv consumption (plist-get j :props))))
                              (cons name new-inv)))
                          players))
            (buf (get-buffer-create "*dm-log-edit-turn*")))

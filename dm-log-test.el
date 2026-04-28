@@ -900,5 +900,51 @@ Los personajes entraron.
           (should-not (let ((case-fold-search nil)) (string-match (regexp-quote "| torches |") text)))
           (should (= torch-count 1)))))))
 
+;; =============================================================================
+;; Regression: cumulative consumption across turns
+;; =============================================================================
+
+(ert-deftest dm-log-test-get-consumables-table-player-keyed ()
+  "get-consumables-table should return player-keyed alist with numeric values."
+  (dm-log-test-with-temp-file
+      "* Logbook\n** Session 1\n:PROPERTIES:\n:NUMBER: 1\n:END:\n*** Turn 1 [dungeon] (10m)\n:PROPERTIES:\n:TURN_NUMBER: 1\n:END:\n**** Consumables\n| Item | Player A | Player B |\n|------+----------+----------|\n| TORCHES | 5.00 | 3.00 |\n| RATIONS | 10.00 | 8.00 |\n"
+    (let ((entry (dm-log-org--get-last-entry file)))
+      (should entry)
+      (let ((cons-table (plist-get entry :consumables)))
+        (should cons-table)
+        (let ((player-a (cdr (assoc-string "Player A" cons-table t))))
+          (should player-a)
+          (should (= (cdr (assoc "TORCHES" player-a)) 5.0))
+          (should (= (cdr (assoc "RATIONS" player-a)) 10.0)))
+        (let ((player-b (cdr (assoc-string "Player B" cons-table t))))
+          (should player-b)
+          (should (= (cdr (assoc "TORCHES" player-b)) 3.0))
+          (should (= (cdr (assoc "RATIONS" player-b)) 8.0)))))))
+
+(ert-deftest dm-log-test-cumulative-consumption ()
+  "Second turn should start from first turn's remaining values, not original inventory."
+  (dm-log-test-with-temp-file
+      "* Logbook\n** Session 1\n:PROPERTIES:\n:NUMBER: 1\n:END:\n"
+    (let* ((time-start (dm-log-time--parse-game-timestamp "[2024-01-01 12:00]"))
+           (time-end (dm-log-time--parse-game-timestamp "[2024-01-01 12:10]"))
+           (consumables '(("Player A" . (("TORCHES" . 5.0) ("RATIONS" . 10.0))))))
+      (dm-log-org--insert-turn file 1 "dungeon" "10m" "First turn." consumables nil time-start time-end)
+      (let ((last (dm-log-org--get-last-entry file)))
+        (should last)
+        (should (plist-get last :consumables))
+        (let ((player-a (cdr (assoc-string "Player A" (plist-get last :consumables) t))))
+          (should player-a)
+          (should (= (cdr (assoc "TORCHES" player-a)) 5.0))
+          (should (= (cdr (assoc "RATIONS" player-a)) 10.0)))))))
+
+(ert-deftest dm-log-test-consumption-from-last-entry ()
+  "apply-consumption should use last entry's values as starting point."
+  (let* ((last-consumables '(("Player A" . (("TORCHES" . 4.83) ("RATIONS" . 9.98)))))
+         (consumption '(("Torches" . 0.17) ("Rations" . 0.02))))
+    (let* ((base-inv (cdr (assoc-string "Player A" last-consumables t)))
+           (new-inv (dm-log-consumables--apply-consumption base-inv consumption nil)))
+      (should (< (cdr (assoc "TORCHES" new-inv)) 4.83))
+      (should (< (cdr (assoc "RATIONS" new-inv)) 9.98)))))
+
 (provide 'dm-log-test)
 ;;; dm-log-test.el ends here
