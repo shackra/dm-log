@@ -1,0 +1,16 @@
+[package]
+name = "mazaforja"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+orgize = "0.9.0"
+quick-xml = { version = "0.37", features = ["serialize"] }
+sdl3 = "0.18.0"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1.52.1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

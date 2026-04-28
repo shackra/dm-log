@@ -12,6 +12,7 @@
 (require 'dm-log-org)
 (require 'dm-log-ui)
 (require 'dm-log-campaign)
+(require 'dm-log-map)
 
 (defvar dm-log--current-logbook-file nil)
 (defvar dm-log--current-players-file nil)
@@ -34,6 +35,7 @@
     ("t" "Time jump" dm-log-transient-time-jump)]
    ["Campaign"
     ("c" "Switch campaign" dm-log-transient-switch-campaign)
+    ("m" "Map editor" dm-log-map)
     ("q" "Quit menu" transient-quit-one)]]
   (interactive)
   (if dm-log--current-campaign

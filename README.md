@@ -29,7 +29,7 @@ git clone <repo> ~/.emacs.d/lisp/dm-log
 En tu `init.el`:
 
 ```elisp
-(add-to-list 'load-path "~/.emacs.d/lisp/dm-log")
+(add-to-list 'load-path "~/.emacs.d/lisp/dm-log/lisp")
 (require 'dm-log)
 ```
 
