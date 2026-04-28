@@ -6,7 +6,11 @@ mod ui;
 use std::path::PathBuf;
 
 use clap::Parser;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+    MouseButton, MouseEventKind,
+};
+use ratatui::crossterm::execute;
 use ratatui::layout::{Constraint, Direction, Layout};
 
 use app::{App, EditorMode};
@@ -14,9 +18,13 @@ use map::{Layer, MapDef, MapFile, MapType};
 use ui::{
     brush_picker::{BrushEntry, BrushPickerWidget},
     canvas::Canvas,
-    layers::LayerPanel,
+    help::HelpWidget,
+    layerbar::LayerBar,
     palette::{Palette, PaletteWidget},
+    sidebar_left::SidebarLeft,
+    sidebar_right::SidebarRight,
     status::StatusBar,
+    topbar::TopBar,
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -72,9 +80,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Brush-picker entries vary by map type; we'll rebuild on demand.
     let mut brush_picker_selected: usize = 0;
     let mut brush_picker_entries: Vec<BrushEntry> = Vec::new();
+    let mut sidebar_brush_idx: usize = 0;
+    let mut sidebar_color_idx: usize = 0;
 
     // Terminal init — install panic hook to restore terminal even on crash
     let mut terminal = ratatui::init();
+    execute!(std::io::stdout(), EnableMouseCapture)?;
 
     let result = run(
         &mut terminal,
@@ -83,8 +94,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut palette,
         &mut brush_picker_selected,
         &mut brush_picker_entries,
+        &mut sidebar_brush_idx,
+        &mut sidebar_color_idx,
     );
 
+    let _ = execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
     result
 }
@@ -100,6 +114,8 @@ fn run(
     palette: &mut Palette,
     brush_picker_selected: &mut usize,
     brush_picker_entries: &mut Vec<BrushEntry>,
+    sidebar_brush_idx: &mut usize,
+    sidebar_color_idx: &mut usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         // Clear one-shot status
@@ -111,51 +127,82 @@ fn run(
             // Restore status for this frame
             app.status_msg = saved_status.clone();
 
-            // Layout: optional layer panel (left 12 cols) | canvas | right
-            let (canvas_area, layer_area) = if app.layer_panel_open {
-                let chunks = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Min(1), Constraint::Length(14)])
-                    .split(size);
-                (chunks[0], Some(chunks[1]))
-            } else {
-                (size, None)
-            };
+            // ── 5-band vertical layout ──
+            // Top bar (1 row) | Middle (sidebars + canvas) | Layer bar (3 rows) | Status (1 row)
+            let vert = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(1), // top bar
+                    Constraint::Min(5),    // middle area
+                    Constraint::Length(3), // layer bar
+                    Constraint::Length(2), // status bar
+                ])
+                .split(size);
 
-            // Status bar at bottom (2 rows)
-            let (canvas_area, status_area) = {
-                let chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Min(1), Constraint::Length(2)])
-                    .split(canvas_area);
-                (chunks[0], chunks[1])
-            };
+            let topbar_area = vert[0];
+            let middle_area = vert[1];
+            let layerbar_area = vert[2];
+            let status_area = vert[3];
+
+            // ── Middle: left sidebar (20) | canvas | right sidebar (20) ──
+            let horiz = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Length(20), // left sidebar
+                    Constraint::Min(10),    // canvas
+                    Constraint::Length(22), // right sidebar
+                ])
+                .split(middle_area);
+
+            let left_area = horiz[0];
+            let canvas_area = horiz[1];
+            let right_area = horiz[2];
+
+            // Store UI rects for mouse hit-testing
+            app.canvas_rect = (
+                canvas_area.x,
+                canvas_area.y,
+                canvas_area.width,
+                canvas_area.height,
+            );
+            app.left_sidebar_rect = (left_area.x, left_area.y, left_area.width, left_area.height);
+            app.right_sidebar_rect = (
+                right_area.x,
+                right_area.y,
+                right_area.width,
+                right_area.height,
+            );
+            app.topbar_rect = (
+                topbar_area.x,
+                topbar_area.y,
+                topbar_area.width,
+                topbar_area.height,
+            );
 
             // Auto-scroll
             app.scroll_to_cursor(canvas_area.width, canvas_area.height);
 
-            // Render canvas
+            // Render all panels
+            frame.render_widget(TopBar::new(app), topbar_area);
+            frame.render_widget(
+                SidebarLeft::new(app, *sidebar_brush_idx, *sidebar_color_idx),
+                left_area,
+            );
             frame.render_widget(Canvas::new(app), canvas_area);
-
-            // Render status bar
+            frame.render_widget(SidebarRight::new(app), right_area);
+            frame.render_widget(LayerBar::new(app), layerbar_area);
             frame.render_widget(StatusBar::new(app), status_area);
 
-            // Render layer panel
-            if let Some(la) = layer_area {
-                frame.render_widget(LayerPanel::new(app), la);
-            }
+            // ── Popups (overlay) ──
 
-            // Render palette popup (centered)
+            // Palette popup (centered)
             if app.palette_open {
                 let popup = centered_rect(40, 60, size);
-                frame.render_widget(
-                    ratatui::widgets::Clear,
-                    popup,
-                );
+                frame.render_widget(ratatui::widgets::Clear, popup);
                 frame.render_widget(PaletteWidget { palette }, popup);
             }
 
-            // Render brush picker popup (centered)
+            // Brush picker popup (centered)
             if app.mode == EditorMode::BrushPicker {
                 let popup = centered_rect(36, 50, size);
                 frame.render_widget(ratatui::widgets::Clear, popup);
@@ -168,13 +215,207 @@ fn run(
                 );
             }
 
-            // Clear status after render so it doesn't persist multiple frames
+            // Help overlay (topmost)
+            if app.help_open {
+                let popup = centered_rect(52, 70, size);
+                frame.render_widget(ratatui::widgets::Clear, popup);
+                frame.render_widget(HelpWidget, popup);
+            }
+
+            // Clear status after render
             app.status_msg = None;
         })?;
 
         // Event handling (blocking poll)
-        if let Event::Key(key) = event::read()? {
+        let ev = event::read()?;
+
+        // Mouse events
+        if let Event::Mouse(mouse) = ev {
+            let (cx, cy, cw, ch) = app.canvas_rect;
+            let (lx, ly, lw, lh) = app.left_sidebar_rect;
+            let (rx, ry, _rw, rh) = app.right_sidebar_rect;
+            let (tx, ty, _tw, _th) = app.topbar_rect;
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    // ── Top bar tab click ──
+                    if mouse.row == ty {
+                        if let Some(clicked_type) = topbar_tab_hit(mouse.column, tx) {
+                            // Pop stack back to a map of clicked type
+                            while app.map_stack.len() > 1 {
+                                let top_type = app.current_map().map(|m| m.map_type.clone());
+                                if top_type.as_ref() == Some(&clicked_type) {
+                                    break;
+                                }
+                                app.pop_map();
+                            }
+                            continue;
+                        }
+                    }
+
+                    // ── Left sidebar click (brush list) ──
+                    if mouse.column >= lx
+                        && mouse.column < lx + lw
+                        && mouse.row >= ly
+                        && mouse.row < ly + lh
+                    {
+                        let brush_y_start = ly + 1; // 1 row for header
+                        let map_type = app.current_map().map(|m| m.map_type.clone());
+                        let num_brushes = match &map_type {
+                            Some(t) => ui::sidebar_left::brushes_for(t).len(),
+                            None => 0,
+                        };
+
+                        // Check if click is on a brush row
+                        if mouse.row >= brush_y_start
+                            && mouse.row < brush_y_start + num_brushes as u16
+                        {
+                            let idx = (mouse.row - brush_y_start) as usize;
+                            *sidebar_brush_idx = idx;
+                            if let Some(t) = &map_type {
+                                let brushes = ui::sidebar_left::brushes_for(t);
+                                if let Some(&(glyph, label, _color)) = brushes.get(idx) {
+                                    app.active_brush = Box::new(
+                                        editor::brushes::region::TerrainBrush::new(glyph, label),
+                                    );
+                                    app.mode = EditorMode::Brushing;
+                                    app.set_status(format!("Brush: {} {}", glyph, label));
+                                }
+                            }
+                            continue;
+                        }
+
+                        // Check if click is on palette row
+                        let palette_header_y = brush_y_start + num_brushes as u16 + 1;
+                        let palette_row_y = palette_header_y + 1;
+                        if mouse.row == palette_row_y {
+                            let click_x = mouse.column.saturating_sub(lx + 1);
+                            let color_idx = (click_x / 3) as usize;
+                            if let Some(t) = &map_type {
+                                let pal = ui::sidebar_left::palette_for(t);
+                                if color_idx < pal.len() {
+                                    *sidebar_color_idx = color_idx;
+                                    // Use currently selected sidebar brush glyph with new color
+                                    let brushes = ui::sidebar_left::brushes_for(t);
+                                    let (ch, label) = brushes
+                                        .get(*sidebar_brush_idx)
+                                        .map(|(c, l, _)| (*c, *l))
+                                        .unwrap_or(('.', "terrain"));
+                                    app.active_brush = Box::new(
+                                        editor::brushes::region::TerrainBrush::new(ch, label),
+                                    );
+                                    app.mode = EditorMode::Brushing;
+                                    app.set_status(format!(
+                                        "Brush: {} {} (color {})",
+                                        ch, label, pal[color_idx]
+                                    ));
+                                }
+                            }
+                            continue;
+                        }
+                        continue;
+                    }
+
+                    // ── Right sidebar click (minimap) ──
+                    if mouse.column >= rx && mouse.row >= ry && mouse.row < ry + rh {
+                        let minimap_x_start = rx + 2;
+                        let minimap_y_start = ry + 1;
+                        let minimap_h = 6u16.min(rh.saturating_sub(12));
+                        let minimap_w = (_rw.saturating_sub(3)).min(20);
+
+                        if mouse.column >= minimap_x_start
+                            && mouse.column < minimap_x_start + minimap_w
+                            && mouse.row >= minimap_y_start
+                            && mouse.row < minimap_y_start + minimap_h
+                        {
+                            if let Some(map) = app.current_map() {
+                                let scale_x = map.width as f32 / minimap_w as f32;
+                                let scale_y = map.height as f32 / minimap_h as f32;
+                                let map_x =
+                                    ((mouse.column - minimap_x_start) as f32 * scale_x) as u16;
+                                let map_y = ((mouse.row - minimap_y_start) as f32 * scale_y) as u16;
+                                // Center viewport on clicked map location
+                                app.viewport.0 = map_x.saturating_sub(cw / 2);
+                                app.viewport.1 = map_y.saturating_sub(ch / 2);
+                            }
+                            continue;
+                        }
+                    }
+
+                    // ── Canvas click ──
+                    if mouse.column >= cx
+                        && mouse.column < cx + cw
+                        && mouse.row >= cy
+                        && mouse.row < cy + ch
+                    {
+                        let map_col = app.viewport.0 + (mouse.column - cx);
+                        let map_row = app.viewport.1 + (mouse.row - cy);
+                        app.cursor = (map_col, map_row);
+                        // Auto-grow map
+                        if let Some(map) = app.current_map_mut() {
+                            if map_col >= map.width {
+                                map.width = map_col + 1;
+                            }
+                            if map_row >= map.height {
+                                map.height = map_row + 1;
+                            }
+                        }
+                        // If brushing, confirm on click
+                        if app.mode == EditorMode::Brushing {
+                            with_brush(app, |b, a| b.on_confirm(a));
+                            sync_stack_to_file(app, map_file);
+                            save_all(app, map_file);
+                        }
+                    }
+                }
+                MouseEventKind::ScrollUp => {
+                    app.viewport.1 = app.viewport.1.saturating_sub(3);
+                }
+                MouseEventKind::ScrollDown => {
+                    app.viewport.1 = app.viewport.1 + 3;
+                }
+                MouseEventKind::ScrollLeft => {
+                    app.viewport.0 = app.viewport.0.saturating_sub(3);
+                }
+                MouseEventKind::ScrollRight => {
+                    app.viewport.0 = app.viewport.0 + 3;
+                }
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    // Drag inside canvas = paint while moving (if brushing)
+                    if mouse.column >= cx
+                        && mouse.column < cx + cw
+                        && mouse.row >= cy
+                        && mouse.row < cy + ch
+                    {
+                        let map_col = app.viewport.0 + (mouse.column - cx);
+                        let map_row = app.viewport.1 + (mouse.row - cy);
+                        app.cursor = (map_col, map_row);
+                        // Auto-grow
+                        if let Some(map) = app.current_map_mut() {
+                            if map_col >= map.width {
+                                map.width = map_col + 1;
+                            }
+                            if map_row >= map.height {
+                                map.height = map_row + 1;
+                            }
+                        }
+                        if app.mode == EditorMode::Brushing {
+                            with_brush(app, |b, a| b.on_confirm(a));
+                        }
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+
+        if let Event::Key(key) = ev {
             if key.kind != KeyEventKind::Press {
+                continue;
+            }
+
+            // Help overlay: any key closes it
+            if app.help_open {
+                app.help_open = false;
                 continue;
             }
 
@@ -231,16 +472,26 @@ fn handle_normal_key(
     brush_picker_selected: &mut usize,
     brush_picker_entries: &mut Vec<BrushEntry>,
 ) {
+    // Clear double-Esc state on any non-Esc key
+    if code != KeyCode::Esc {
+        app.esc_pending = false;
+    }
+
     match code {
         // Movement
-        KeyCode::Char('h') | KeyCode::Left  => app.move_cursor(-1, 0),
-        KeyCode::Char('j') | KeyCode::Down  => app.move_cursor(0, 1),
-        KeyCode::Char('k') | KeyCode::Up    => app.move_cursor(0, -1),
+        KeyCode::Char('h') | KeyCode::Left => app.move_cursor(-1, 0),
+        KeyCode::Char('j') | KeyCode::Down => app.move_cursor(0, 1),
+        KeyCode::Char('k') | KeyCode::Up => app.move_cursor(0, -1),
         KeyCode::Char('l') | KeyCode::Right => app.move_cursor(1, 0),
 
         // Layer navigation
-        KeyCode::Char('[') => app.prev_layer(),
-        KeyCode::Char(']') => app.next_layer(),
+        KeyCode::Char('[') | KeyCode::PageUp => app.prev_layer(),
+        KeyCode::Char(']') | KeyCode::PageDown => app.next_layer(),
+
+        // Help overlay
+        KeyCode::Char('?') | KeyCode::Char('H') => {
+            app.help_open = true;
+        }
 
         // Brush picker
         KeyCode::Char('b') => {
@@ -259,10 +510,22 @@ fn handle_normal_key(
             app.layer_panel_open = !app.layer_panel_open;
         }
 
-        // Zone paint mode
-        KeyCode::Char('Z') => {
+        // Zone paint mode (Z or z per design)
+        KeyCode::Char('Z') | KeyCode::Char('z') => {
             app.mode = EditorMode::ZonePaint;
             app.set_status("ZONE PAINT: move cursor to flood-fill area, Enter=fill, Esc=cancel");
+        }
+
+        // Tab: cycle through brushes
+        KeyCode::Tab => {
+            let entries = build_brush_entries(app);
+            if !entries.is_empty() {
+                *brush_picker_entries = entries;
+                *brush_picker_selected = (*brush_picker_selected + 1) % brush_picker_entries.len();
+                activate_brush_by_index(app, *brush_picker_selected);
+                app.mode = EditorMode::Brushing;
+                app.set_status(format!("Brush: {}", app.active_brush.name()));
+            }
         }
 
         // Keying
@@ -277,10 +540,16 @@ fn handle_normal_key(
             try_drill_down(app, map_file);
         }
 
-        // Esc = pop map stack / cancel
+        // Esc = pop map stack / double-Esc at root = quit
         KeyCode::Esc => {
             if !app.pop_map() {
-                app.set_status("Press 'q' to quit.");
+                if app.esc_pending {
+                    app.should_quit = true;
+                } else {
+                    app.esc_pending = true;
+                    app.set_status("Press Esc again to quit.");
+                }
+                return; // skip esc_pending reset below
             }
         }
 
@@ -333,10 +602,22 @@ where
 
 fn handle_brushing_key(code: KeyCode, app: &mut App, map_file: &mut MapFile) {
     match code {
-        KeyCode::Char('h') | KeyCode::Left  => { app.move_cursor(-1, 0); with_brush(app, |b, a| b.on_move(a)); }
-        KeyCode::Char('j') | KeyCode::Down  => { app.move_cursor(0, 1);  with_brush(app, |b, a| b.on_move(a)); }
-        KeyCode::Char('k') | KeyCode::Up    => { app.move_cursor(0, -1); with_brush(app, |b, a| b.on_move(a)); }
-        KeyCode::Char('l') | KeyCode::Right => { app.move_cursor(1, 0);  with_brush(app, |b, a| b.on_move(a)); }
+        KeyCode::Char('h') | KeyCode::Left => {
+            app.move_cursor(-1, 0);
+            with_brush(app, |b, a| b.on_move(a));
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            app.move_cursor(0, 1);
+            with_brush(app, |b, a| b.on_move(a));
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.move_cursor(0, -1);
+            with_brush(app, |b, a| b.on_move(a));
+        }
+        KeyCode::Char('l') | KeyCode::Right => {
+            app.move_cursor(1, 0);
+            with_brush(app, |b, a| b.on_move(a));
+        }
         KeyCode::Enter | KeyCode::Char(' ') => {
             with_brush(app, |b, a| b.on_confirm(a));
             sync_stack_to_file(app, map_file);
@@ -352,17 +633,15 @@ fn handle_brushing_key(code: KeyCode, app: &mut App, map_file: &mut MapFile) {
 
 fn handle_palette_key(code: KeyCode, app: &mut App, palette: &mut Palette) {
     match code {
-        KeyCode::Char('h') | KeyCode::Left  => palette.move_left(),
-        KeyCode::Char('j') | KeyCode::Down  => palette.move_down(),
-        KeyCode::Char('k') | KeyCode::Up    => palette.move_up(),
+        KeyCode::Char('h') | KeyCode::Left => palette.move_left(),
+        KeyCode::Char('j') | KeyCode::Down => palette.move_down(),
+        KeyCode::Char('k') | KeyCode::Up => palette.move_up(),
         KeyCode::Char('l') | KeyCode::Right => palette.move_right(),
         KeyCode::Tab => palette.next_category(),
         KeyCode::BackTab => palette.prev_category(),
         KeyCode::Enter => {
             if let Some(ch) = palette.selected_char() {
-                app.active_brush = Box::new(
-                    editor::brushes::region::TerrainBrush::new(ch, "")
-                );
+                app.active_brush = Box::new(editor::brushes::region::TerrainBrush::new(ch, ""));
                 app.mode = EditorMode::Brushing;
             }
             app.palette_open = false;
@@ -405,9 +684,9 @@ fn handle_brush_picker_key(
 
 fn handle_zone_paint_key(code: KeyCode, app: &mut App, map_file: &mut MapFile) {
     match code {
-        KeyCode::Char('h') | KeyCode::Left  => app.move_cursor(-1, 0),
-        KeyCode::Char('j') | KeyCode::Down  => app.move_cursor(0, 1),
-        KeyCode::Char('k') | KeyCode::Up    => app.move_cursor(0, -1),
+        KeyCode::Char('h') | KeyCode::Left => app.move_cursor(-1, 0),
+        KeyCode::Char('j') | KeyCode::Down => app.move_cursor(0, 1),
+        KeyCode::Char('k') | KeyCode::Up => app.move_cursor(0, -1),
         KeyCode::Char('l') | KeyCode::Right => app.move_cursor(1, 0),
         KeyCode::Enter => {
             zone_flood_fill(app);
@@ -433,9 +712,17 @@ fn zone_flood_fill(app: &mut App) {
 
     let target_ch = if let Some(map) = app.current_map() {
         if let Some(layer) = map.layer(z) {
-            layer.cells.get(&(start_col, start_row)).map(|c| c.ch).unwrap_or(' ')
-        } else { return; }
-    } else { return; };
+            layer
+                .cells
+                .get(&(start_col, start_row))
+                .map(|c| c.ch)
+                .unwrap_or(' ')
+        } else {
+            return;
+        }
+    } else {
+        return;
+    };
 
     let map_w = app.current_map().map(|m| m.width).unwrap_or(80);
     let map_h = app.current_map().map(|m| m.height).unwrap_or(40);
@@ -446,40 +733,71 @@ fn zone_flood_fill(app: &mut App) {
     queue.push_back((start_col, start_row));
 
     while let Some((col, row)) = queue.pop_front() {
-        if visited.contains(&(col, row)) { continue; }
-        if col >= map_w || row >= map_h { continue; }
+        if visited.contains(&(col, row)) {
+            continue;
+        }
+        if col >= map_w || row >= map_h {
+            continue;
+        }
 
         let matches = if let Some(map) = app.current_map() {
             if let Some(layer) = map.layer(z) {
-                layer.cells.get(&(col, row)).map(|c| c.ch == target_ch).unwrap_or(target_ch == ' ')
-            } else { false }
-        } else { false };
+                layer
+                    .cells
+                    .get(&(col, row))
+                    .map(|c| c.ch == target_ch)
+                    .unwrap_or(target_ch == ' ')
+            } else {
+                false
+            }
+        } else {
+            false
+        };
 
-        if !matches { continue; }
+        if !matches {
+            continue;
+        }
         visited.insert((col, row));
 
-        if col > 0 { queue.push_back((col - 1, row)); }
-        if col + 1 < map_w { queue.push_back((col + 1, row)); }
-        if row > 0 { queue.push_back((col, row - 1)); }
-        if row + 1 < map_h { queue.push_back((col, row + 1)); }
+        if col > 0 {
+            queue.push_back((col - 1, row));
+        }
+        if col + 1 < map_w {
+            queue.push_back((col + 1, row));
+        }
+        if row > 0 {
+            queue.push_back((col, row - 1));
+        }
+        if row + 1 < map_h {
+            queue.push_back((col, row + 1));
+        }
     }
 
     // Apply zone assignments
     if let Some(map) = app.current_map_mut() {
         if let Some(layer) = map.layer_mut(z) {
             for pos in &visited {
-                let cell = layer.cells.entry(*pos).or_insert_with(|| map::Cell::new(target_ch));
+                let cell = layer
+                    .cells
+                    .entry(*pos)
+                    .or_insert_with(|| map::Cell::new(target_ch));
                 cell.height_zone = Some(zone_name.clone());
             }
             // Register zone with default offset 0.0
             layer.height_zones.insert(
                 zone_name.clone(),
-                map::HeightZone { name: zone_name.clone(), offset_m: 0.0 },
+                map::HeightZone {
+                    name: zone_name.clone(),
+                    offset_m: 0.0,
+                },
             );
         }
     }
 
-    app.set_status(format!("Zone '{zone_name}' created ({} cells). Use Zh to set height.", visited.len()));
+    app.set_status(format!(
+        "Zone '{zone_name}' created ({} cells). Use Zh to set height.",
+        visited.len()
+    ));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -493,9 +811,16 @@ fn try_drill_down(app: &mut App, map_file: &mut MapFile) {
     // Look for a child map linked from the cell at cursor
     let child_id = if let Some(map) = app.current_map() {
         if let Some(layer) = map.layer(z) {
-            layer.cells.get(&(col, row)).and_then(|c| c.key_uuid.clone())
-        } else { None }
-    } else { None };
+            layer
+                .cells
+                .get(&(col, row))
+                .and_then(|c| c.key_uuid.clone())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     if let Some(ref id) = child_id {
         if let Some(child) = map_file.get(id).cloned() {
@@ -509,8 +834,12 @@ fn try_drill_down(app: &mut App, map_file: &mut MapFile) {
         if map.map_type == MapType::City {
             map.building_at(col, row)
                 .and_then(|b| b.interior_map_id.clone())
-        } else { None }
-    } else { None };
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     if let Some(ref id) = interior_id {
         if let Some(interior) = map_file.get(id).cloned() {
@@ -531,33 +860,96 @@ fn build_brush_entries(app: &App) -> Vec<BrushEntry> {
     let map_type = app.current_map().map(|m| m.map_type.clone());
     match map_type {
         Some(MapType::Region) => vec![
-            BrushEntry { name: "Terrain".into(), preview_char: '░' },
-            BrushEntry { name: "City Marker".into(), preview_char: 'C' },
-            BrushEntry { name: "Dungeon Marker".into(), preview_char: 'D' },
-            BrushEntry { name: "Town Marker".into(), preview_char: 'T' },
+            BrushEntry {
+                name: "Terrain".into(),
+                preview_char: '░',
+            },
+            BrushEntry {
+                name: "City Marker".into(),
+                preview_char: 'C',
+            },
+            BrushEntry {
+                name: "Dungeon Marker".into(),
+                preview_char: 'D',
+            },
+            BrushEntry {
+                name: "Town Marker".into(),
+                preview_char: 'T',
+            },
         ],
         Some(MapType::Dungeon) => vec![
-            BrushEntry { name: "Room".into(), preview_char: '#' },
-            BrushEntry { name: "Corridor (H)".into(), preview_char: '.' },
-            BrushEntry { name: "Corridor (V)".into(), preview_char: '.' },
-            BrushEntry { name: "Door (closed)".into(), preview_char: '+' },
-            BrushEntry { name: "Door (open)".into(), preview_char: '/' },
-            BrushEntry { name: "Stairs (up)".into(), preview_char: '<' },
-            BrushEntry { name: "Stairs (down)".into(), preview_char: '>' },
+            BrushEntry {
+                name: "Room".into(),
+                preview_char: '#',
+            },
+            BrushEntry {
+                name: "Corridor (H)".into(),
+                preview_char: '.',
+            },
+            BrushEntry {
+                name: "Corridor (V)".into(),
+                preview_char: '.',
+            },
+            BrushEntry {
+                name: "Door (closed)".into(),
+                preview_char: '+',
+            },
+            BrushEntry {
+                name: "Door (open)".into(),
+                preview_char: '/',
+            },
+            BrushEntry {
+                name: "Stairs (up)".into(),
+                preview_char: '<',
+            },
+            BrushEntry {
+                name: "Stairs (down)".into(),
+                preview_char: '>',
+            },
         ],
         Some(MapType::City) => vec![
-            BrushEntry { name: "Building".into(), preview_char: '#' },
-            BrushEntry { name: "Street".into(), preview_char: '\u{00B7}' },
-            BrushEntry { name: "Plaza".into(), preview_char: '.' },
-            BrushEntry { name: "Wall (H)".into(), preview_char: '\u{2500}' },
-            BrushEntry { name: "Wall (V)".into(), preview_char: '\u{2502}' },
+            BrushEntry {
+                name: "Building".into(),
+                preview_char: '#',
+            },
+            BrushEntry {
+                name: "Street".into(),
+                preview_char: '\u{00B7}',
+            },
+            BrushEntry {
+                name: "Plaza".into(),
+                preview_char: '.',
+            },
+            BrushEntry {
+                name: "Wall (H)".into(),
+                preview_char: '\u{2500}',
+            },
+            BrushEntry {
+                name: "Wall (V)".into(),
+                preview_char: '\u{2502}',
+            },
         ],
         Some(MapType::Building) => vec![
-            BrushEntry { name: "Room".into(), preview_char: '#' },
-            BrushEntry { name: "Furniture".into(), preview_char: '\u{2591}' },
-            BrushEntry { name: "Door (closed)".into(), preview_char: '+' },
-            BrushEntry { name: "Stairs (up)".into(), preview_char: '<' },
-            BrushEntry { name: "Stairs (down)".into(), preview_char: '>' },
+            BrushEntry {
+                name: "Room".into(),
+                preview_char: '#',
+            },
+            BrushEntry {
+                name: "Furniture".into(),
+                preview_char: '\u{2591}',
+            },
+            BrushEntry {
+                name: "Door (closed)".into(),
+                preview_char: '+',
+            },
+            BrushEntry {
+                name: "Stairs (up)".into(),
+                preview_char: '<',
+            },
+            BrushEntry {
+                name: "Stairs (down)".into(),
+                preview_char: '>',
+            },
         ],
         None => vec![],
     }
@@ -566,30 +958,59 @@ fn build_brush_entries(app: &App) -> Vec<BrushEntry> {
 fn activate_brush_by_index(app: &mut App, idx: usize) {
     let map_type = app.current_map().map(|m| m.map_type.clone());
     let brush: Box<dyn editor::brush::Brush> = match (map_type, idx) {
-        (Some(MapType::Region), 0) => Box::new(editor::brushes::region::TerrainBrush::new('░', "terrain")),
-        (Some(MapType::Region), 1) => Box::new(editor::brushes::region::CityMarkerBrush::new("New City", 60, 30)),
-        (Some(MapType::Region), 2) => Box::new(editor::brushes::region::DungeonMarkerBrush::new("New Dungeon", 40, 20)),
+        (Some(MapType::Region), 0) => {
+            Box::new(editor::brushes::region::TerrainBrush::new('░', "terrain"))
+        }
+        (Some(MapType::Region), 1) => Box::new(editor::brushes::region::CityMarkerBrush::new(
+            "New City", 60, 30,
+        )),
+        (Some(MapType::Region), 2) => Box::new(editor::brushes::region::DungeonMarkerBrush::new(
+            "New Dungeon",
+            40,
+            20,
+        )),
         (Some(MapType::Region), 3) => Box::new(editor::brushes::region::TownMarkerBrush),
 
         (Some(MapType::Dungeon), 0) => Box::new(editor::brushes::dungeon::RoomBrush::new(5, 4)),
-        (Some(MapType::Dungeon), 1) => Box::new(editor::brushes::dungeon::CorridorBrush::new(true, 6)),
-        (Some(MapType::Dungeon), 2) => Box::new(editor::brushes::dungeon::CorridorBrush::new(false, 6)),
+        (Some(MapType::Dungeon), 1) => {
+            Box::new(editor::brushes::dungeon::CorridorBrush::new(true, 6))
+        }
+        (Some(MapType::Dungeon), 2) => {
+            Box::new(editor::brushes::dungeon::CorridorBrush::new(false, 6))
+        }
         (Some(MapType::Dungeon), 3) => Box::new(editor::brushes::dungeon::DoorBrush::new(false)),
         (Some(MapType::Dungeon), 4) => Box::new(editor::brushes::dungeon::DoorBrush::new(true)),
-        (Some(MapType::Dungeon), 5) => Box::new(editor::brushes::dungeon::StairsBrush::new(true, app.current_layer + 1)),
-        (Some(MapType::Dungeon), 6) => Box::new(editor::brushes::dungeon::StairsBrush::new(false, app.current_layer - 1)),
+        (Some(MapType::Dungeon), 5) => Box::new(editor::brushes::dungeon::StairsBrush::new(
+            true,
+            app.current_layer + 1,
+        )),
+        (Some(MapType::Dungeon), 6) => Box::new(editor::brushes::dungeon::StairsBrush::new(
+            false,
+            app.current_layer - 1,
+        )),
 
-        (Some(MapType::City), 0) => Box::new(editor::brushes::city::BuildingBrush::new("Building", 8, 6)),
+        (Some(MapType::City), 0) => {
+            Box::new(editor::brushes::city::BuildingBrush::new("Building", 8, 6))
+        }
         (Some(MapType::City), 1) => Box::new(editor::brushes::city::StreetBrush),
         (Some(MapType::City), 2) => Box::new(editor::brushes::city::PlazaBrush),
         (Some(MapType::City), 3) => Box::new(editor::brushes::city::WallBrush::new(true)),
         (Some(MapType::City), 4) => Box::new(editor::brushes::city::WallBrush::new(false)),
 
         (Some(MapType::Building), 0) => Box::new(editor::brushes::dungeon::RoomBrush::new(5, 4)),
-        (Some(MapType::Building), 1) => Box::new(editor::brushes::building::FurnitureBrush::new('\u{2591}', "Furniture")),
+        (Some(MapType::Building), 1) => Box::new(editor::brushes::building::FurnitureBrush::new(
+            '\u{2591}',
+            "Furniture",
+        )),
         (Some(MapType::Building), 2) => Box::new(editor::brushes::dungeon::DoorBrush::new(false)),
-        (Some(MapType::Building), 3) => Box::new(editor::brushes::dungeon::StairsBrush::new(true, app.current_layer + 1)),
-        (Some(MapType::Building), 4) => Box::new(editor::brushes::dungeon::StairsBrush::new(false, app.current_layer - 1)),
+        (Some(MapType::Building), 3) => Box::new(editor::brushes::dungeon::StairsBrush::new(
+            true,
+            app.current_layer + 1,
+        )),
+        (Some(MapType::Building), 4) => Box::new(editor::brushes::dungeon::StairsBrush::new(
+            false,
+            app.current_layer - 1,
+        )),
 
         _ => Box::new(editor::brush::NullBrush),
     };
@@ -642,11 +1063,15 @@ mod tests {
             let layer = map.layer_mut(0).unwrap();
             for r in 0u16..3 {
                 for c in 0u16..3 {
-                    layer.cells.insert((c, r), Cell::new('.').with_terrain("floor"));
+                    layer
+                        .cells
+                        .insert((c, r), Cell::new('.').with_terrain("floor"));
                 }
             }
             // An unconnected cell far away
-            layer.cells.insert((10, 10), Cell::new('.').with_terrain("floor"));
+            layer
+                .cells
+                .insert((10, 10), Cell::new('.').with_terrain("floor"));
         }
         app.cursor = (0, 0);
         zone_flood_fill(&mut app);
@@ -657,7 +1082,10 @@ mod tests {
         let zone = layer.cells[&(0, 0)].height_zone.clone().unwrap();
         for r in 0u16..3 {
             for c in 0u16..3 {
-                assert_eq!(layer.cells[&(c, r)].height_zone.as_deref(), Some(zone.as_str()));
+                assert_eq!(
+                    layer.cells[&(c, r)].height_zone.as_deref(),
+                    Some(zone.as_str())
+                );
             }
         }
         // Unconnected cell: no zone
@@ -699,12 +1127,17 @@ mod tests {
             let map = app.current_map_mut().unwrap();
             let layer = map.layer_mut(z).unwrap();
             let cell = layer.cells.entry((3, 3)).or_insert_with(|| Cell::new('.'));
-            let uid = cell.key_uuid.get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
+            let uid = cell
+                .key_uuid
+                .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
             uid.clone()
         };
 
         let layer = app.current_map().unwrap().layer(z).unwrap();
-        assert_eq!(layer.cells[&(3, 3)].key_uuid.as_deref(), Some(uuid.as_str()));
+        assert_eq!(
+            layer.cells[&(3, 3)].key_uuid.as_deref(),
+            Some(uuid.as_str())
+        );
         assert!(!uuid.is_empty());
     }
 
@@ -723,14 +1156,24 @@ mod tests {
         let uuid = {
             let map = app.current_map_mut().unwrap();
             if let Some(b) = map.buildings.iter_mut().find(|b| b.contains(6, 4)) {
-                b.key_uuid.get_or_insert_with(|| uuid::Uuid::new_v4().to_string()).clone()
-            } else { panic!("building not found") }
+                b.key_uuid
+                    .get_or_insert_with(|| uuid::Uuid::new_v4().to_string())
+                    .clone()
+            } else {
+                panic!("building not found")
+            }
         };
 
         assert_eq!(uuid, "existing-uuid");
         // Cell should NOT get a key_uuid
         let layer = app.current_map().unwrap().layer(z).unwrap();
-        assert!(layer.cells.get(&(6, 4)).and_then(|c| c.key_uuid.as_ref()).is_none());
+        assert!(
+            layer
+                .cells
+                .get(&(6, 4))
+                .and_then(|c| c.key_uuid.as_ref())
+                .is_none()
+        );
     }
 
     // ── building interior canvas_clip constraint ─────────────────────────────
@@ -772,7 +1215,7 @@ mod tests {
 
     #[test]
     fn palette_selected_char_returns_correct_char() {
-        use ui::palette::{Palette, CATEGORIES};
+        use ui::palette::{CATEGORIES, Palette};
         let mut p = Palette::default();
         // category 0 = Terrain, first char = '░'
         assert_eq!(p.selected_char(), Some(CATEGORIES[0].1[0]));
@@ -782,7 +1225,7 @@ mod tests {
 
     #[test]
     fn palette_next_category_wraps() {
-        use ui::palette::{Palette, CATEGORIES};
+        use ui::palette::{CATEGORIES, Palette};
         let mut p = Palette::default();
         let n = CATEGORIES.len();
         for _ in 0..n {
@@ -792,7 +1235,39 @@ mod tests {
     }
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::layout::Rect) -> ratatui::layout::Rect {
+/// Determine which map-type tab was clicked given the mouse column and topbar x origin.
+fn topbar_tab_hit(col: u16, topbar_x: u16) -> Option<MapType> {
+    // Layout: " ⚔ MAZAFORJA │ " = 16 chars, then tabs " LABEL " + 1 gap each
+    let title_len = 13u16; // " ⚔ MAZAFORJA"
+    let sep_len = 3u16; // " │ "
+    let tabs_start = topbar_x + title_len + sep_len;
+    if col < tabs_start {
+        return None;
+    }
+
+    let tab_labels: &[(&str, MapType)] = &[
+        ("REGION", MapType::Region),
+        ("DUNGEON", MapType::Dungeon),
+        ("CITY", MapType::City),
+        ("BUILDING", MapType::Building),
+    ];
+
+    let mut x = tabs_start;
+    for (label, mt) in tab_labels {
+        let tab_w = label.len() as u16 + 2 + 1; // " LABEL " + 1 gap
+        if col >= x && col < x + tab_w {
+            return Some(mt.clone());
+        }
+        x += tab_w;
+    }
+    None
+}
+
+fn centered_rect(
+    percent_x: u16,
+    percent_y: u16,
+    r: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

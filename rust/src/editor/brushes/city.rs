@@ -12,14 +12,20 @@ pub struct BuildingBrush {
 
 impl BuildingBrush {
     pub fn new(name: impl Into<String>, w: u16, h: u16) -> Self {
-        BuildingBrush { name: name.into(), w: w.max(3), h: h.max(3) }
+        BuildingBrush {
+            name: name.into(),
+            w: w.max(3),
+            h: h.max(3),
+        }
     }
 
+    #[allow(dead_code)]
     pub fn grow(&mut self) {
         self.w += 1;
         self.h += 1;
     }
 
+    #[allow(dead_code)]
     pub fn shrink(&mut self) {
         self.w = (self.w - 1).max(3);
         self.h = (self.h - 1).max(3);
@@ -27,15 +33,23 @@ impl BuildingBrush {
 }
 
 impl Brush for BuildingBrush {
-    fn name(&self) -> &str { "Building" }
-    fn preview_char(&self) -> char { '#' }
+    fn name(&self) -> &str {
+        "Building"
+    }
+    fn preview_char(&self) -> char {
+        '#'
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
         let (col, row) = app.cursor;
         let z = app.current_layer;
 
-        if app.current_map().map(|m| m.map_type != MapType::City).unwrap_or(true) {
+        if app
+            .current_map()
+            .map(|m| m.map_type != MapType::City)
+            .unwrap_or(true)
+        {
             app.set_status("BuildingBrush only works on City maps.");
             return;
         }
@@ -44,7 +58,10 @@ impl Brush for BuildingBrush {
         let building = Building::new(
             building_id.clone(),
             self.name.clone(),
-            col, row, self.w, self.h,
+            col,
+            row,
+            self.w,
+            self.h,
         );
 
         if let Some(map) = app.current_map_mut() {
@@ -54,8 +71,7 @@ impl Brush for BuildingBrush {
                     for dx in 0..self.w {
                         let c = col + dx;
                         let r = row + dy;
-                        let on_perim = dy == 0 || dy == self.h - 1
-                            || dx == 0 || dx == self.w - 1;
+                        let on_perim = dy == 0 || dy == self.h - 1 || dx == 0 || dx == self.w - 1;
                         if layer.cells.get(&(c, r)).map(|e| e.locked).unwrap_or(false) {
                             continue;
                         }
@@ -82,8 +98,12 @@ impl Brush for BuildingBrush {
 pub struct StreetBrush;
 
 impl Brush for StreetBrush {
-    fn name(&self) -> &str { "Street" }
-    fn preview_char(&self) -> char { '\u{00B7}' } // ·
+    fn name(&self) -> &str {
+        "Street"
+    }
+    fn preview_char(&self) -> char {
+        '\u{00B7}'
+    } // ·
 
     fn on_move(&mut self, _app: &mut App) {}
 
@@ -92,8 +112,15 @@ impl Brush for StreetBrush {
         let z = app.current_layer;
         if let Some(map) = app.current_map_mut() {
             if let Some(layer) = map.layer_mut(z) {
-                if !layer.cells.get(&(col, row)).map(|c| c.locked).unwrap_or(false) {
-                    layer.cells.insert((col, row), Cell::new('\u{00B7}').with_terrain("road"));
+                if !layer
+                    .cells
+                    .get(&(col, row))
+                    .map(|c| c.locked)
+                    .unwrap_or(false)
+                {
+                    layer
+                        .cells
+                        .insert((col, row), Cell::new('\u{00B7}').with_terrain("road"));
                 }
             }
         }
@@ -106,8 +133,12 @@ impl Brush for StreetBrush {
 pub struct PlazaBrush;
 
 impl Brush for PlazaBrush {
-    fn name(&self) -> &str { "Plaza" }
-    fn preview_char(&self) -> char { '.' }
+    fn name(&self) -> &str {
+        "Plaza"
+    }
+    fn preview_char(&self) -> char {
+        '.'
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
@@ -115,8 +146,15 @@ impl Brush for PlazaBrush {
         let z = app.current_layer;
         if let Some(map) = app.current_map_mut() {
             if let Some(layer) = map.layer_mut(z) {
-                if !layer.cells.get(&(col, row)).map(|c| c.locked).unwrap_or(false) {
-                    layer.cells.insert((col, row), Cell::new('.').with_terrain("plaza"));
+                if !layer
+                    .cells
+                    .get(&(col, row))
+                    .map(|c| c.locked)
+                    .unwrap_or(false)
+                {
+                    layer
+                        .cells
+                        .insert((col, row), Cell::new('.').with_terrain("plaza"));
                 }
             }
         }
@@ -138,18 +176,37 @@ impl WallBrush {
 }
 
 impl Brush for WallBrush {
-    fn name(&self) -> &str { "Wall" }
-    fn preview_char(&self) -> char { if self.horizontal { '\u{2500}' } else { '\u{2502}' } }
+    fn name(&self) -> &str {
+        "Wall"
+    }
+    fn preview_char(&self) -> char {
+        if self.horizontal {
+            '\u{2500}'
+        } else {
+            '\u{2502}'
+        }
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
         let (col, row) = app.cursor;
         let z = app.current_layer;
-        let ch = if self.horizontal { '\u{2500}' } else { '\u{2502}' }; // ─ │
+        let ch = if self.horizontal {
+            '\u{2500}'
+        } else {
+            '\u{2502}'
+        }; // ─ │
         if let Some(map) = app.current_map_mut() {
             if let Some(layer) = map.layer_mut(z) {
-                if !layer.cells.get(&(col, row)).map(|c| c.locked).unwrap_or(false) {
-                    layer.cells.insert((col, row), Cell::new(ch).with_terrain("wall"));
+                if !layer
+                    .cells
+                    .get(&(col, row))
+                    .map(|c| c.locked)
+                    .unwrap_or(false)
+                {
+                    layer
+                        .cells
+                        .insert((col, row), Cell::new(ch).with_terrain("wall"));
                 }
             }
         }
@@ -220,7 +277,9 @@ mod tests {
         {
             let map = app.current_map_mut().unwrap();
             let layer = map.layer_mut(0).unwrap();
-            layer.cells.insert((6, 4), crate::map::Cell::new('X').locked());
+            layer
+                .cells
+                .insert((6, 4), crate::map::Cell::new('X').locked());
         }
         app.cursor = (5, 3);
         let mut brush = BuildingBrush::new("Inn", 6, 4);

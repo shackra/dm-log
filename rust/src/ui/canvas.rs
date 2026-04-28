@@ -23,7 +23,7 @@ impl<'a> Widget for Canvas<'a> {
         let map = match self.app.current_map() {
             Some(m) => m,
             None => {
-                buf.set_string(area.x, area.y, "No map loaded. Press 'n' to create one.", Style::default());
+                buf.set_string(area.x, area.y, "No map loaded.", Style::default());
                 return;
             }
         };
@@ -99,8 +99,7 @@ impl<'a> Widget for Canvas<'a> {
                 };
 
                 // Brush preview: dim if brushing and near cursor
-                let style = if self.app.mode == EditorMode::Brushing
-                    && (map_col, map_row) == cursor
+                let style = if self.app.mode == EditorMode::Brushing && (map_col, map_row) == cursor
                 {
                     style.add_modifier(Modifier::DIM)
                 } else {

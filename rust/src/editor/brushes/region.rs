@@ -10,13 +10,20 @@ pub struct TerrainBrush {
 
 impl TerrainBrush {
     pub fn new(ch: char, terrain: impl Into<String>) -> Self {
-        TerrainBrush { ch, terrain: terrain.into() }
+        TerrainBrush {
+            ch,
+            terrain: terrain.into(),
+        }
     }
 }
 
 impl Brush for TerrainBrush {
-    fn name(&self) -> &str { "Terrain" }
-    fn preview_char(&self) -> char { self.ch }
+    fn name(&self) -> &str {
+        "Terrain"
+    }
+    fn preview_char(&self) -> char {
+        self.ch
+    }
 
     fn on_move(&mut self, _app: &mut App) {}
 
@@ -55,8 +62,12 @@ impl CityMarkerBrush {
 }
 
 impl Brush for CityMarkerBrush {
-    fn name(&self) -> &str { "City Marker" }
-    fn preview_char(&self) -> char { 'C' }
+    fn name(&self) -> &str {
+        "City Marker"
+    }
+    fn preview_char(&self) -> char {
+        'C'
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
@@ -109,8 +120,12 @@ impl DungeonMarkerBrush {
 }
 
 impl Brush for DungeonMarkerBrush {
-    fn name(&self) -> &str { "Dungeon Marker" }
-    fn preview_char(&self) -> char { 'D' }
+    fn name(&self) -> &str {
+        "Dungeon Marker"
+    }
+    fn preview_char(&self) -> char {
+        'D'
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
@@ -147,8 +162,12 @@ impl Brush for DungeonMarkerBrush {
 pub struct TownMarkerBrush;
 
 impl Brush for TownMarkerBrush {
-    fn name(&self) -> &str { "Town Marker" }
-    fn preview_char(&self) -> char { 'T' }
+    fn name(&self) -> &str {
+        "Town Marker"
+    }
+    fn preview_char(&self) -> char {
+        'T'
+    }
     fn on_move(&mut self, _app: &mut App) {}
     fn on_confirm(&mut self, app: &mut App) {
         let (col, row) = app.cursor;

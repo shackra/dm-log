@@ -1,7 +1,7 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     widgets::Widget,
 };
 
@@ -19,9 +19,27 @@ impl<'a> StatusBar<'a> {
 
 impl<'a> Widget for StatusBar<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        if area.width < 10 {
+            return;
+        }
+
+        let accent = self.app.accent_color();
+
+        // Top 1px dim border
+        for x in area.x..area.x + area.width {
+            buf.set_string(
+                x,
+                area.y,
+                "\u{2500}",
+                Style::default().fg(Color::Indexed(236)),
+            );
+        }
+
+        let y = if area.height > 1 { area.y + 1 } else { area.y };
+
         let mode_str = match self.app.mode {
-            EditorMode::Normal => "NORMAL",
-            EditorMode::Brushing => "BRUSH",
+            EditorMode::Normal => "DRAW",
+            EditorMode::Brushing => "DRAW",
             EditorMode::Select => "SELECT",
             EditorMode::Key => "KEY",
             EditorMode::BrushPicker => "PICK",
@@ -30,60 +48,46 @@ impl<'a> Widget for StatusBar<'a> {
         };
 
         let brush_name = self.app.active_brush.name();
+        let brush_char = self.app.active_brush.preview_char();
         let (cx, cy) = self.app.cursor;
         let z = self.app.current_layer;
 
-        // Compute absolute height of cursor cell
+        // Compute absolute height
         let abs_h = if let Some(map) = self.app.current_map() {
             let cumbase = if z > 0 {
                 map.cumulative_height(z - 1)
             } else {
                 0.0
             };
-            if let Some(layer) = map.layer(z) {
-                layer.cell_abs_height((cx, cy), cumbase)
-            } else {
-                0.0
-            }
+            map.layer(z)
+                .map(|l| l.cell_abs_height((cx, cy), cumbase))
+                .unwrap_or(0.0)
         } else {
             0.0
         };
 
-        // Zone name at cursor
-        let zone_str = if let Some(map) = self.app.current_map() {
-            if let Some(layer) = map.layer(z) {
-                if let Some(cell) = layer.cells.get(&(cx, cy)) {
-                    cell.height_zone.as_deref().unwrap_or("").to_string()
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        };
-
-        let map_name = self.app.current_map().map(|m| m.name.as_str()).unwrap_or("—");
-
-        let main = if zone_str.is_empty() {
+        // Left side: accent-colored info
+        // DRAW · [glyph] brush_name · col,row · Layer +z (+Xm)
+        let left = if let Some(msg) = &self.app.status_msg {
             format!(
-                " [{mode_str}/{brush_name}] {cx},{cy} z:{z} ({abs_h:.1}m)  {map_name}"
+                " {mode_str} \u{00B7} [{brush_char}] {brush_name} \u{00B7} {cx},{cy} \u{00B7} Layer {:+} ({abs_h:+.0}m) \u{00B7} {msg}",
+                z
             )
         } else {
             format!(
-                " [{mode_str}/{brush_name}] {cx},{cy} z:{z} ({abs_h:.1}m) zone:{zone_str}  {map_name}"
+                " {mode_str} \u{00B7} [{brush_char}] {brush_name} \u{00B7} {cx},{cy} \u{00B7} Layer {:+} ({abs_h:+.0}m)",
+                z
             )
         };
 
-        let style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-        buf.set_string(area.x, area.y, &main, style);
+        buf.set_string(area.x, y, &left, Style::default().fg(accent));
 
-        // Transient status message on second row if available
-        if let Some(msg) = &self.app.status_msg {
-            if area.height > 1 {
-                buf.set_string(area.x, area.y + 1, format!(" {msg}"), Style::default().fg(Color::Yellow));
-            }
+        // Right side: dim keybinding hints
+        let right =
+            "hjkl move \u{00B7} b brush \u{00B7} PgUp/Dn layer \u{00B7} z zones \u{00B7} ? help ";
+        let rx = (area.x + area.width).saturating_sub(right.len() as u16);
+        if rx > area.x + left.len() as u16 {
+            buf.set_string(rx, y, right, Style::default().fg(Color::Indexed(238)));
         }
     }
 }

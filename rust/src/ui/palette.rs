@@ -13,32 +13,35 @@ pub struct Palette {
 }
 
 pub const CATEGORIES: &[(&str, &[char])] = &[
-    ("Terrain", &[
-        '░', '▒', '▓', '█', '~', '≈', '▲', '·', ',', '"',
-    ]),
-    ("Dungeon", &[
-        '#', '.', '+', '/', '\\', '|', '-', '@', '^', '<', '>',
-    ]),
-    ("Box Drawing", &[
-        '─', '│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼',
-        '═', '║', '╔', '╗', '╚', '╝', '╠', '╣', '╦', '╩', '╬',
-    ]),
-    ("Markers", &[
-        'C', 'D', 'T', 'B', 'M',
-    ]),
-    ("Flora", &[
-        '♠', '♣', '♦', '♥', '☼', '☺', '☻', '•', '◘', '○',
-    ]),
-    ("Arrows", &[
-        '←', '→', '↑', '↓', '↔', '↕',
-    ]),
+    (
+        "Terrain",
+        &['░', '▒', '▓', '█', '~', '≈', '▲', '·', ',', '"'],
+    ),
+    (
+        "Dungeon",
+        &['#', '.', '+', '/', '\\', '|', '-', '@', '^', '<', '>'],
+    ),
+    (
+        "Box Drawing",
+        &[
+            '─', '│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '═', '║', '╔', '╗', '╚', '╝',
+            '╠', '╣', '╦', '╩', '╬',
+        ],
+    ),
+    ("Markers", &['C', 'D', 'T', 'B', 'M']),
+    ("Flora", &['♠', '♣', '♦', '♥', '☼', '☺', '☻', '•', '◘', '○']),
+    ("Arrows", &['←', '→', '↑', '↓', '↔', '↕']),
 ];
 
 const COLS: usize = 10;
 
 impl Default for Palette {
     fn default() -> Self {
-        Palette { selected_row: 0, selected_col: 0, category: 0 }
+        Palette {
+            selected_row: 0,
+            selected_col: 0,
+            category: 0,
+        }
     }
 }
 
@@ -50,14 +53,20 @@ impl Palette {
     }
 
     pub fn move_up(&mut self) {
-        if self.selected_row > 0 { self.selected_row -= 1; }
+        if self.selected_row > 0 {
+            self.selected_row -= 1;
+        }
     }
     pub fn move_down(&mut self) {
         let max_row = (CATEGORIES[self.category].1.len() + COLS - 1) / COLS;
-        if self.selected_row + 1 < max_row { self.selected_row += 1; }
+        if self.selected_row + 1 < max_row {
+            self.selected_row += 1;
+        }
     }
     pub fn move_left(&mut self) {
-        if self.selected_col > 0 { self.selected_col -= 1; }
+        if self.selected_col > 0 {
+            self.selected_col -= 1;
+        }
     }
     pub fn move_right(&mut self) {
         let chars_in_row = {
@@ -65,7 +74,9 @@ impl Palette {
             let start = self.selected_row * COLS;
             chars.len().saturating_sub(start).min(COLS)
         };
-        if self.selected_col + 1 < chars_in_row { self.selected_col += 1; }
+        if self.selected_col + 1 < chars_in_row {
+            self.selected_col += 1;
+        }
     }
     pub fn next_category(&mut self) {
         self.category = (self.category + 1) % CATEGORIES.len();
@@ -95,7 +106,12 @@ impl<'a> Widget for PaletteWidget<'a> {
         // Category tabs
         let (cat_name, chars) = CATEGORIES[self.palette.category];
         let tab_line = format!("[{}] {cat_name}", self.palette.category + 1);
-        buf.set_string(inner.x, inner.y, &tab_line, Style::default().add_modifier(Modifier::BOLD));
+        buf.set_string(
+            inner.x,
+            inner.y,
+            &tab_line,
+            Style::default().add_modifier(Modifier::BOLD),
+        );
 
         let row_start = inner.y + 1;
         for (i, chunk) in chars.chunks(COLS).enumerate() {
@@ -110,7 +126,10 @@ impl<'a> Widget for PaletteWidget<'a> {
                 }
                 let selected = i == self.palette.selected_row && j == self.palette.selected_col;
                 let style = if selected {
-                    Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::White)
                 };

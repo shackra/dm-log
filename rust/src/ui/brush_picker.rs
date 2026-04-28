@@ -32,7 +32,10 @@ impl<'a> Widget for BrushPickerWidget<'a> {
             }
             let selected = i == self.selected;
             let style = if selected {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };

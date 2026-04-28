@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub mod xml;
 
@@ -55,6 +55,8 @@ pub struct Cell {
     /// Name of the height zone this cell belongs to within the layer.
     /// None = uses the layer's default height.
     pub height_zone: Option<String>,
+    /// Foreground color as a 256-color index (0 = default/use map-type accent).
+    pub fg_color: u8,
 }
 
 impl Cell {
@@ -65,6 +67,7 @@ impl Cell {
             key_uuid: None,
             locked: false,
             height_zone: None,
+            fg_color: 0,
         }
     }
 
@@ -75,6 +78,11 @@ impl Cell {
 
     pub fn with_terrain(mut self, terrain: impl Into<String>) -> Self {
         self.terrain = terrain.into();
+        self
+    }
+
+    pub fn with_color(mut self, fg_color: u8) -> Self {
+        self.fg_color = fg_color;
         self
     }
 }
@@ -147,7 +155,14 @@ pub struct Building {
 }
 
 impl Building {
-    pub fn new(id: impl Into<String>, name: impl Into<String>, x: u16, y: u16, w: u16, h: u16) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        x: u16,
+        y: u16,
+        w: u16,
+        h: u16,
+    ) -> Self {
         Building {
             id: id.into(),
             name: name.into(),
@@ -161,15 +176,14 @@ impl Building {
     }
 
     /// Returns true if (col, row) is on the outer perimeter of this building.
+    #[allow(dead_code)]
     pub fn is_perimeter(&self, col: u16, row: u16) -> bool {
-        col == self.x || col == self.x + self.w - 1
-            || row == self.y || row == self.y + self.h - 1
+        col == self.x || col == self.x + self.w - 1 || row == self.y || row == self.y + self.h - 1
     }
 
     /// Returns true if (col, row) is within or on the boundary of this building.
     pub fn contains(&self, col: u16, row: u16) -> bool {
-        col >= self.x && col < self.x + self.w
-            && row >= self.y && row < self.y + self.h
+        col >= self.x && col < self.x + self.w && row >= self.y && row < self.y + self.h
     }
 }
 
@@ -235,6 +249,7 @@ impl MapDef {
     }
 
     /// Find a mutable building that contains the given cell position.
+    #[allow(dead_code)]
     pub fn building_at_mut(&mut self, col: u16, row: u16) -> Option<&mut Building> {
         self.buildings.iter_mut().find(|b| b.contains(col, row))
     }
@@ -255,6 +270,7 @@ impl MapFile {
         self.maps.iter().find(|m| m.id == id)
     }
 
+    #[allow(dead_code)]
     pub fn get_mut(&mut self, id: &str) -> Option<&mut MapDef> {
         self.maps.iter_mut().find(|m| m.id == id)
     }
@@ -309,7 +325,10 @@ mod tests {
         let mut layer = Layer::new(1, 3.0);
         layer.height_zones.insert(
             "pit".to_string(),
-            HeightZone { name: "pit".to_string(), offset_m: -1.5 },
+            HeightZone {
+                name: "pit".to_string(),
+                offset_m: -1.5,
+            },
         );
         let mut cell = Cell::new('.');
         cell.height_zone = Some("pit".to_string());

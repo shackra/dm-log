@@ -31,18 +31,30 @@ pub fn key_current_cell(app: &mut App) {
         // City map: prefer building UUID if cursor is inside a building
         if map.map_type == MapType::City {
             if let Some(b) = map.buildings.iter_mut().find(|b| b.contains(col, row)) {
-                let uid = b.key_uuid.get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
+                let uid = b
+                    .key_uuid
+                    .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
                 uid.clone()
             } else if let Some(layer) = map.layer_mut(z) {
-                let cell = layer.cells.entry((col, row)).or_insert_with(|| crate::map::Cell::new('.'));
-                let uid = cell.key_uuid.get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
+                let cell = layer
+                    .cells
+                    .entry((col, row))
+                    .or_insert_with(|| crate::map::Cell::new('.'));
+                let uid = cell
+                    .key_uuid
+                    .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
                 uid.clone()
             } else {
                 return;
             }
         } else if let Some(layer) = map.layer_mut(z) {
-            let cell = layer.cells.entry((col, row)).or_insert_with(|| crate::map::Cell::new('.'));
-            let uid = cell.key_uuid.get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
+            let cell = layer
+                .cells
+                .entry((col, row))
+                .or_insert_with(|| crate::map::Cell::new('.'));
+            let uid = cell
+                .key_uuid
+                .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
             uid.clone()
         } else {
             return;
@@ -76,9 +88,8 @@ fn collect_map_file(app: &App) -> crate::map::MapFile {
 }
 
 fn open_keying_buffer(uuid: &str, entity_type: &str, campaign_dir: &str) {
-    let elisp = format!(
-        "(dm-log-map--open-keying-buffer \"{uuid}\" \"{entity_type}\" \"{campaign_dir}\")"
-    );
+    let elisp =
+        format!("(dm-log-map--open-keying-buffer \"{uuid}\" \"{entity_type}\" \"{campaign_dir}\")");
 
     // Try emacsclient first, fall back to emacs
     let ok = Command::new("emacsclient")
@@ -88,8 +99,6 @@ fn open_keying_buffer(uuid: &str, entity_type: &str, campaign_dir: &str) {
         .unwrap_or(false);
 
     if !ok {
-        let _ = Command::new("emacs")
-            .args(["--eval", &elisp])
-            .status();
+        let _ = Command::new("emacs").args(["--eval", &elisp]).status();
     }
 }

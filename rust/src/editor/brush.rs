@@ -22,8 +22,12 @@ pub trait Brush: Send {
 pub struct NullBrush;
 
 impl Brush for NullBrush {
-    fn name(&self) -> &str { "(none)" }
-    fn preview_char(&self) -> char { ' ' }
+    fn name(&self) -> &str {
+        "(none)"
+    }
+    fn preview_char(&self) -> char {
+        ' '
+    }
     fn on_move(&mut self, _app: &mut crate::app::App) {}
     fn on_confirm(&mut self, app: &mut crate::app::App) {
         app.set_status("No brush selected. Press 'b' to pick one.");

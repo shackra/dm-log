@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 
+use ratatui::style::Color;
+
 use crate::editor::brush::Brush;
-use crate::map::MapDef;
+use crate::map::{MapDef, MapType};
 
 /// Current interaction mode of the editor.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum EditorMode {
     /// Default — cursor movement, layer switch, open menus.
     Normal,
@@ -55,6 +58,18 @@ pub struct App {
     pub status_msg: Option<String>,
     /// Whether the editor should quit after the current frame.
     pub should_quit: bool,
+    /// Whether the help overlay is visible.
+    pub help_open: bool,
+    /// True after first Esc at root — second Esc quits.
+    pub esc_pending: bool,
+    /// Screen rect of the canvas area (set each frame for mouse mapping).
+    pub canvas_rect: (u16, u16, u16, u16),
+    /// Screen rect of the left sidebar (set each frame for mouse hit-testing).
+    pub left_sidebar_rect: (u16, u16, u16, u16),
+    /// Screen rect of the right sidebar (set each frame for mouse hit-testing).
+    pub right_sidebar_rect: (u16, u16, u16, u16),
+    /// Screen rect of the top bar (set each frame for mouse hit-testing).
+    pub topbar_rect: (u16, u16, u16, u16),
 }
 
 impl App {
@@ -73,6 +88,12 @@ impl App {
             canvas_clip: None,
             status_msg: None,
             should_quit: false,
+            help_open: false,
+            esc_pending: false,
+            canvas_rect: (0, 0, 80, 40),
+            left_sidebar_rect: (0, 0, 0, 0),
+            right_sidebar_rect: (0, 0, 0, 0),
+            topbar_rect: (0, 0, 0, 0),
         }
     }
 
@@ -108,14 +129,19 @@ impl App {
         true
     }
 
-    /// Move cursor by (dx, dy), clamped to current map bounds.
+    /// Move cursor by (dx, dy). Auto-grows map if cursor exceeds bounds.
     pub fn move_cursor(&mut self, dx: i32, dy: i32) {
-        if let Some(map) = self.current_map() {
-            let max_x = map.width.saturating_sub(1);
-            let max_y = map.height.saturating_sub(1);
-            let new_x = (self.cursor.0 as i32 + dx).clamp(0, max_x as i32) as u16;
-            let new_y = (self.cursor.1 as i32 + dy).clamp(0, max_y as i32) as u16;
-            self.cursor = (new_x, new_y);
+        let new_x = (self.cursor.0 as i32 + dx).max(0) as u16;
+        let new_y = (self.cursor.1 as i32 + dy).max(0) as u16;
+        self.cursor = (new_x, new_y);
+        // Auto-grow map if cursor exceeds bounds
+        if let Some(map) = self.current_map_mut() {
+            if new_x >= map.width {
+                map.width = new_x + 1;
+            }
+            if new_y >= map.height {
+                map.height = new_y + 1;
+            }
         }
     }
 
@@ -159,6 +185,17 @@ impl App {
         }
     }
 
+    /// Accent color for the current map type.
+    pub fn accent_color(&self) -> Color {
+        match self.current_map().map(|m| &m.map_type) {
+            Some(MapType::Region) => Color::Indexed(10), // bright green #55ff55
+            Some(MapType::Dungeon) => Color::Indexed(11), // bright yellow #ffff55
+            Some(MapType::City) => Color::Indexed(14),   // bright cyan #55ffff
+            Some(MapType::Building) => Color::Indexed(6), // dark cyan #00aaaa
+            None => Color::White,
+        }
+    }
+
     /// Set a transient status message.
     pub fn set_status(&mut self, msg: impl Into<String>) {
         self.status_msg = Some(msg.into());
@@ -170,6 +207,7 @@ impl App {
     }
 
     /// Path to map.org for the current campaign.
+    #[allow(dead_code)]
     pub fn map_org_path(&self) -> PathBuf {
         self.campaign_dir.join("map.org")
     }
@@ -188,12 +226,16 @@ mod tests {
     // ── cursor ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn cursor_clamps_at_map_edge() {
+    fn cursor_clamps_at_zero_and_auto_grows() {
         let mut app = make_app(10, 8);
         app.move_cursor(-100, -100);
         assert_eq!(app.cursor, (0, 0));
+        // Moving past bounds auto-grows map
         app.move_cursor(100, 100);
-        assert_eq!(app.cursor, (9, 7));
+        assert_eq!(app.cursor, (100, 100));
+        let map = app.current_map().unwrap();
+        assert_eq!(map.width, 101);
+        assert_eq!(map.height, 101);
     }
 
     #[test]
@@ -234,7 +276,10 @@ mod tests {
         assert_eq!(app.current_layer, 0);
 
         // add z=1
-        app.current_map_mut().unwrap().layers.push(Layer::new(1, 3.0));
+        app.current_map_mut()
+            .unwrap()
+            .layers
+            .push(Layer::new(1, 3.0));
         app.next_layer();
         assert_eq!(app.current_layer, 1);
         app.next_layer(); // no z=2 → should stay
@@ -291,7 +336,10 @@ mod tests {
     #[test]
     fn campaign_paths_correct() {
         let app = App::new(PathBuf::from("/campaigns/test"), None);
-        assert_eq!(app.maps_xml_path(), PathBuf::from("/campaigns/test/maps.xml"));
+        assert_eq!(
+            app.maps_xml_path(),
+            PathBuf::from("/campaigns/test/maps.xml")
+        );
         assert_eq!(app.map_org_path(), PathBuf::from("/campaigns/test/map.org"));
     }
 }

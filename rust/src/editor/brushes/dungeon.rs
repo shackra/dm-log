@@ -11,14 +11,19 @@ pub struct RoomBrush {
 
 impl RoomBrush {
     pub fn new(w: u16, h: u16) -> Self {
-        RoomBrush { w: w.max(3), h: h.max(3) }
+        RoomBrush {
+            w: w.max(3),
+            h: h.max(3),
+        }
     }
 
+    #[allow(dead_code)]
     pub fn grow(&mut self) {
         self.w += 1;
         self.h += 1;
     }
 
+    #[allow(dead_code)]
     pub fn shrink(&mut self) {
         self.w = (self.w - 1).max(3);
         self.h = (self.h - 1).max(3);
@@ -45,8 +50,12 @@ impl RoomBrush {
 }
 
 impl Brush for RoomBrush {
-    fn name(&self) -> &str { "Room" }
-    fn preview_char(&self) -> char { '#' }
+    fn name(&self) -> &str {
+        "Room"
+    }
+    fn preview_char(&self) -> char {
+        '#'
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
@@ -79,13 +88,20 @@ pub struct CorridorBrush {
 
 impl CorridorBrush {
     pub fn new(horizontal: bool, length: u16) -> Self {
-        CorridorBrush { horizontal, length: length.max(1) }
+        CorridorBrush {
+            horizontal,
+            length: length.max(1),
+        }
     }
 }
 
 impl Brush for CorridorBrush {
-    fn name(&self) -> &str { "Corridor" }
-    fn preview_char(&self) -> char { '.' }
+    fn name(&self) -> &str {
+        "Corridor"
+    }
+    fn preview_char(&self) -> char {
+        '.'
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
@@ -147,8 +163,16 @@ impl DoorBrush {
 }
 
 impl Brush for DoorBrush {
-    fn name(&self) -> &str { if self.open { "Door (open)" } else { "Door (closed)" } }
-    fn preview_char(&self) -> char { if self.open { '/' } else { '+' } }
+    fn name(&self) -> &str {
+        if self.open {
+            "Door (open)"
+        } else {
+            "Door (closed)"
+        }
+    }
+    fn preview_char(&self) -> char {
+        if self.open { '/' } else { '+' }
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
@@ -157,8 +181,15 @@ impl Brush for DoorBrush {
         let ch = if self.open { '/' } else { '+' };
         if let Some(map) = app.current_map_mut() {
             if let Some(layer) = map.layer_mut(z) {
-                if !layer.cells.get(&(col, row)).map(|c| c.locked).unwrap_or(false) {
-                    layer.cells.insert((col, row), Cell::new(ch).with_terrain("door"));
+                if !layer
+                    .cells
+                    .get(&(col, row))
+                    .map(|c| c.locked)
+                    .unwrap_or(false)
+                {
+                    layer
+                        .cells
+                        .insert((col, row), Cell::new(ch).with_terrain("door"));
                 }
             }
         }
@@ -181,8 +212,16 @@ impl StairsBrush {
 }
 
 impl Brush for StairsBrush {
-    fn name(&self) -> &str { if self.up { "Stairs (up)" } else { "Stairs (down)" } }
-    fn preview_char(&self) -> char { if self.up { '<' } else { '>' } }
+    fn name(&self) -> &str {
+        if self.up {
+            "Stairs (up)"
+        } else {
+            "Stairs (down)"
+        }
+    }
+    fn preview_char(&self) -> char {
+        if self.up { '<' } else { '>' }
+    }
     fn on_move(&mut self, _app: &mut App) {}
 
     fn on_confirm(&mut self, app: &mut App) {
@@ -191,8 +230,15 @@ impl Brush for StairsBrush {
         let ch = if self.up { '<' } else { '>' };
         if let Some(map) = app.current_map_mut() {
             if let Some(layer) = map.layer_mut(z) {
-                if !layer.cells.get(&(col, row)).map(|c| c.locked).unwrap_or(false) {
-                    layer.cells.insert((col, row), Cell::new(ch).with_terrain("stairs"));
+                if !layer
+                    .cells
+                    .get(&(col, row))
+                    .map(|c| c.locked)
+                    .unwrap_or(false)
+                {
+                    layer
+                        .cells
+                        .insert((col, row), Cell::new(ch).with_terrain("stairs"));
                 }
             }
         }
@@ -236,7 +282,9 @@ mod tests {
         {
             let map = app.current_map_mut().unwrap();
             let layer = map.layer_mut(0).unwrap();
-            layer.cells.insert((3, 3), crate::map::Cell::new('X').locked());
+            layer
+                .cells
+                .insert((3, 3), crate::map::Cell::new('X').locked());
         }
         app.cursor = (2, 2);
         let mut brush = RoomBrush::new(5, 4);

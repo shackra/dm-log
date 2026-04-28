@@ -81,7 +81,10 @@ fn write_map<W: Write>(w: &mut Writer<W>, map: &MapDef) -> Result<(), Box<dyn st
     Ok(())
 }
 
-fn write_layer<W: Write>(w: &mut Writer<W>, layer: &Layer) -> Result<(), Box<dyn std::error::Error>> {
+fn write_layer<W: Write>(
+    w: &mut Writer<W>,
+    layer: &Layer,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut start = BytesStart::new("layer");
     start.push_attribute(("z", layer.z.to_string().as_str()));
     start.push_attribute(("height_m", layer.height_m.to_string().as_str()));
@@ -173,81 +176,87 @@ pub fn load(path: &Path) -> Result<MapFile, Box<dyn std::error::Error>> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                match e.name().as_ref() {
-                    b"map" => {
-                        let attrs = parse_attrs(e);
-                        let map_type: MapType = attrs
-                            .get("type")
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => match e.name().as_ref() {
+                b"map" => {
+                    let attrs = parse_attrs(e);
+                    let map_type: MapType = attrs
+                        .get("type")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(MapType::Region);
+                    let map = MapDef {
+                        id: attrs.get("id").cloned().unwrap_or_default(),
+                        name: attrs.get("name").cloned().unwrap_or_default(),
+                        map_type,
+                        width: attrs
+                            .get("width")
                             .and_then(|s| s.parse().ok())
-                            .unwrap_or(MapType::Region);
-                        let map = MapDef {
-                            id: attrs.get("id").cloned().unwrap_or_default(),
-                            name: attrs.get("name").cloned().unwrap_or_default(),
-                            map_type,
-                            width: attrs.get("width").and_then(|s| s.parse().ok()).unwrap_or(80),
-                            height: attrs.get("height").and_then(|s| s.parse().ok()).unwrap_or(40),
-                            layers: Vec::new(),
-                            buildings: Vec::new(),
-                            parent: attrs.get("parent").cloned(),
-                            parent_x: attrs.get("parent_x").and_then(|s| s.parse().ok()),
-                            parent_y: attrs.get("parent_y").and_then(|s| s.parse().ok()),
-                        };
-                        current_map = Some(map);
-                    }
-                    b"layer" => {
-                        let attrs = parse_attrs(e);
-                        let z: i32 = attrs.get("z").and_then(|s| s.parse().ok()).unwrap_or(0);
-                        let height_m: f32 =
-                            attrs.get("height_m").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                        current_layer = Some(Layer::new(z, height_m));
-                    }
-                    b"height_zone" => {
-                        if let Some(layer) = current_layer.as_mut() {
-                            let attrs = parse_attrs(e);
-                            let name = attrs.get("name").cloned().unwrap_or_default();
-                            let offset_m: f32 =
-                                attrs.get("offset_m").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                            layer.height_zones.insert(
-                                name.clone(),
-                                HeightZone { name, offset_m },
-                            );
-                        }
-                    }
-                    b"cell" => {
-                        if let Some(layer) = current_layer.as_mut() {
-                            let attrs = parse_attrs(e);
-                            let x: u16 = attrs.get("x").and_then(|s| s.parse().ok()).unwrap_or(0);
-                            let y: u16 = attrs.get("y").and_then(|s| s.parse().ok()).unwrap_or(0);
-                            let ch = parse_char(attrs.get("ch").map(|s| s.as_str()).unwrap_or("?"));
-                            let mut cell = Cell::new(ch);
-                            cell.terrain = attrs.get("terrain").cloned().unwrap_or_default();
-                            cell.locked =
-                                attrs.get("locked").map(|s| s == "true").unwrap_or(false);
-                            cell.key_uuid = attrs.get("key_uuid").cloned();
-                            cell.height_zone = attrs.get("height_zone").cloned();
-                            layer.cells.insert((x, y), cell);
-                        }
-                    }
-                    b"building" => {
-                        if let Some(map) = current_map.as_mut() {
-                            let attrs = parse_attrs(e);
-                            let mut b = Building::new(
-                                attrs.get("id").cloned().unwrap_or_default(),
-                                attrs.get("name").cloned().unwrap_or_default(),
-                                attrs.get("x").and_then(|s| s.parse().ok()).unwrap_or(0),
-                                attrs.get("y").and_then(|s| s.parse().ok()).unwrap_or(0),
-                                attrs.get("w").and_then(|s| s.parse().ok()).unwrap_or(1),
-                                attrs.get("h").and_then(|s| s.parse().ok()).unwrap_or(1),
-                            );
-                            b.key_uuid = attrs.get("key_uuid").cloned();
-                            b.interior_map_id = attrs.get("interior_map_id").cloned();
-                            map.buildings.push(b);
-                        }
-                    }
-                    _ => {}
+                            .unwrap_or(80),
+                        height: attrs
+                            .get("height")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(40),
+                        layers: Vec::new(),
+                        buildings: Vec::new(),
+                        parent: attrs.get("parent").cloned(),
+                        parent_x: attrs.get("parent_x").and_then(|s| s.parse().ok()),
+                        parent_y: attrs.get("parent_y").and_then(|s| s.parse().ok()),
+                    };
+                    current_map = Some(map);
                 }
-            }
+                b"layer" => {
+                    let attrs = parse_attrs(e);
+                    let z: i32 = attrs.get("z").and_then(|s| s.parse().ok()).unwrap_or(0);
+                    let height_m: f32 = attrs
+                        .get("height_m")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0.0);
+                    current_layer = Some(Layer::new(z, height_m));
+                }
+                b"height_zone" => {
+                    if let Some(layer) = current_layer.as_mut() {
+                        let attrs = parse_attrs(e);
+                        let name = attrs.get("name").cloned().unwrap_or_default();
+                        let offset_m: f32 = attrs
+                            .get("offset_m")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0.0);
+                        layer
+                            .height_zones
+                            .insert(name.clone(), HeightZone { name, offset_m });
+                    }
+                }
+                b"cell" => {
+                    if let Some(layer) = current_layer.as_mut() {
+                        let attrs = parse_attrs(e);
+                        let x: u16 = attrs.get("x").and_then(|s| s.parse().ok()).unwrap_or(0);
+                        let y: u16 = attrs.get("y").and_then(|s| s.parse().ok()).unwrap_or(0);
+                        let ch = parse_char(attrs.get("ch").map(|s| s.as_str()).unwrap_or("?"));
+                        let mut cell = Cell::new(ch);
+                        cell.terrain = attrs.get("terrain").cloned().unwrap_or_default();
+                        cell.locked = attrs.get("locked").map(|s| s == "true").unwrap_or(false);
+                        cell.key_uuid = attrs.get("key_uuid").cloned();
+                        cell.height_zone = attrs.get("height_zone").cloned();
+                        layer.cells.insert((x, y), cell);
+                    }
+                }
+                b"building" => {
+                    if let Some(map) = current_map.as_mut() {
+                        let attrs = parse_attrs(e);
+                        let mut b = Building::new(
+                            attrs.get("id").cloned().unwrap_or_default(),
+                            attrs.get("name").cloned().unwrap_or_default(),
+                            attrs.get("x").and_then(|s| s.parse().ok()).unwrap_or(0),
+                            attrs.get("y").and_then(|s| s.parse().ok()).unwrap_or(0),
+                            attrs.get("w").and_then(|s| s.parse().ok()).unwrap_or(1),
+                            attrs.get("h").and_then(|s| s.parse().ok()).unwrap_or(1),
+                        );
+                        b.key_uuid = attrs.get("key_uuid").cloned();
+                        b.interior_map_id = attrs.get("interior_map_id").cloned();
+                        map.buildings.push(b);
+                    }
+                }
+                _ => {}
+            },
             Ok(Event::End(ref e)) => match e.name().as_ref() {
                 b"layer" => {
                     if let (Some(layer), Some(map)) = (current_layer.take(), current_map.as_mut()) {
