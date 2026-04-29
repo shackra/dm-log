@@ -1,4 +1,4 @@
-{ ... }:
+{ pkgs, ... }:
 
 {
   # https://devenv.sh/languages/
@@ -7,6 +7,13 @@
     channel = "stable";
     lsp.enable = true;
   };
+
+  packages = with pkgs; [
+    fontconfig
+    pkg-config
+    sdl3
+    sdl3-ttf
+  ];
 
   enterTest = ''
     echo "Running tests"
